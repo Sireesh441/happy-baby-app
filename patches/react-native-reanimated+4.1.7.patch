@@ -1,0 +1,16 @@
+diff --git a/node_modules/react-native-reanimated/lib/module/layoutReanimation/web/componentUtils.js b/node_modules/react-native-reanimated/lib/module/layoutReanimation/web/componentUtils.js
+index ec87a23..ca1b826 100644
+--- a/node_modules/react-native-reanimated/lib/module/layoutReanimation/web/componentUtils.js
++++ b/node_modules/react-native-reanimated/lib/module/layoutReanimation/web/componentUtils.js
+@@ -161,7 +161,10 @@ export function setElementAnimation(element, animationConfig, shouldSavePosition
+   if (!(animationName in Animations)) {
+     scheduleAnimationCleanup(animationName, duration + delay, () => {
+       if (shouldSavePosition) {
+-        setElementPosition(element, snapshots.get(element));
++        const snapshot = snapshots.get(element);
++        if (snapshot) {
++          setElementPosition(element, snapshot);
++        }
+       }
+       maybeRemoveElement();
+       maybeCallCallback(false);
