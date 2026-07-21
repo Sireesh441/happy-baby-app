@@ -1,4 +1,4 @@
-const BACKEND_URL = 'https://happy-baby-seven.vercel.app';
+export const BACKEND_URL = 'https://happy-baby-seven.vercel.app';
 const PRODUCTS_ENDPOINT = `${BACKEND_URL}/api/products`;
 
 export type ProductVertical = 'kids' | 'men' | 'women';

@@ -25,6 +25,11 @@ export default function AppTabs() {
         <Icon src={<VectorIcon family={Ionicons} name="cart-outline" />} />
         {itemCount > 0 && <Badge>{String(itemCount)}</Badge>}
       </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="account">
+        <Label>Account</Label>
+        <Icon src={<VectorIcon family={Ionicons} name="person-outline" />} />
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }

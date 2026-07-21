@@ -6,12 +6,23 @@ import { ProductThumbnail } from '@/components/product-thumbnail';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Spacing } from '@/constants/theme';
+import { useAuth } from '@/context/auth-context';
 import { useCart, type CartLine } from '@/context/cart-context';
 
 export default function CartScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { lines, itemCount, subtotal, updateQuantity, removeItem } = useCart();
+  const { user, isLoading: isAuthLoading } = useAuth();
+
+  function handleCheckoutPress() {
+    if (isAuthLoading) return;
+    if (user) {
+      router.push('/checkout');
+    } else {
+      router.push({ pathname: '/login', params: { redirectTo: '/checkout' } });
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -66,7 +77,7 @@ export default function CartScreen() {
                 <ThemedText type="smallBold">Total</ThemedText>
                 <ThemedText type="smallBold">₹{subtotal}</ThemedText>
               </View>
-              <Pressable onPress={() => router.push('/checkout')} style={styles.checkoutButton}>
+              <Pressable onPress={handleCheckoutPress} style={styles.checkoutButton}>
                 <ThemedText type="smallBold" style={styles.checkoutButtonText}>
                   Proceed to Checkout
                 </ThemedText>
