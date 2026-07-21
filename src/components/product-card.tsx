@@ -1,11 +1,15 @@
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { ProductThumbnail } from '@/components/product-thumbnail';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { useCart } from '@/context/cart-context';
 import type { Product } from '@/lib/api';
+
+const ADDED_FEEDBACK_DURATION_MS = 1500;
 
 type ProductCardProps = {
   product: Product;
@@ -14,9 +18,17 @@ type ProductCardProps = {
 
 export function ProductCard({ product, style }: ProductCardProps) {
   const router = useRouter();
+  const { addItem } = useCart();
+  const [added, setAdded] = useState(false);
   const discountPercent = product.originalPrice
     ? Math.round((1 - product.price / product.originalPrice) * 100)
     : undefined;
+
+  function handleAddToCart() {
+    addItem(product, 1);
+    setAdded(true);
+    setTimeout(() => setAdded(false), ADDED_FEEDBACK_DURATION_MS);
+  }
 
   return (
     <Pressable
@@ -50,6 +62,12 @@ export function ProductCard({ product, style }: ProductCardProps) {
             </ThemedText>
           )}
         </View>
+
+        <Pressable onPress={handleAddToCart} style={styles.addButton}>
+          <ThemedText type="small" style={styles.addButtonText}>
+            {added ? 'Added ✓' : 'Add to Cart'}
+          </ThemedText>
+        </Pressable>
       </ThemedView>
     </Pressable>
   );
@@ -89,5 +107,15 @@ const styles = StyleSheet.create({
   },
   tagText: {
     color: '#92400e',
+  },
+  addButton: {
+    marginTop: Spacing.one,
+    backgroundColor: '#3c87f7',
+    borderRadius: Spacing.five,
+    paddingVertical: Spacing.two,
+    alignItems: 'center',
+  },
+  addButtonText: {
+    color: '#ffffff',
   },
 });

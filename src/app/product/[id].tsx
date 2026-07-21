@@ -8,6 +8,7 @@ import { ProductImageCarousel } from '@/components/product-image-carousel';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { useCart } from '@/context/cart-context';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchProductById, fetchProducts, getProductImageUrl, type Product } from '@/lib/api';
 
@@ -18,6 +19,7 @@ export default function ProductDetailScreen() {
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { addItem } = useCart();
 
   const productId = rawId ? Number(rawId) : NaN;
 
@@ -79,6 +81,8 @@ export default function ProductDetailScreen() {
   }, [product]);
 
   function handleAddToCart() {
+    if (!product) return;
+    addItem(product, quantity);
     setAdded(true);
     setTimeout(() => setAdded(false), ADDED_FEEDBACK_DURATION_MS);
   }

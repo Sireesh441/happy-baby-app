@@ -14,8 +14,11 @@ import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
 import { Colors, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useCart } from '@/context/cart-context';
 
 export default function AppTabs() {
+  const { itemCount } = useCart();
+
   return (
     <Tabs>
       <TabSlot style={{ height: '100%' }} />
@@ -24,8 +27,8 @@ export default function AppTabs() {
           <TabTrigger name="home" href="/" asChild>
             <TabButton>Home</TabButton>
           </TabTrigger>
-          <TabTrigger name="explore" href="/explore" asChild>
-            <TabButton>Explore</TabButton>
+          <TabTrigger name="cart" href="/cart" asChild>
+            <TabButton badgeCount={itemCount}>Cart</TabButton>
           </TabTrigger>
         </CustomTabList>
       </TabList>
@@ -33,7 +36,9 @@ export default function AppTabs() {
   );
 }
 
-export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
+type TabButtonProps = TabTriggerSlotProps & { badgeCount?: number };
+
+export function TabButton({ children, isFocused, badgeCount, ...props }: TabButtonProps) {
   return (
     <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
       <ThemedView
@@ -42,6 +47,11 @@ export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps
         <ThemedText type="small" themeColor={isFocused ? 'text' : 'textSecondary'}>
           {children}
         </ThemedText>
+        {!!badgeCount && (
+          <View style={styles.badge}>
+            <ThemedText style={styles.badgeText}>{badgeCount > 99 ? '99+' : badgeCount}</ThemedText>
+          </View>
+        )}
       </ThemedView>
     </Pressable>
   );
@@ -55,7 +65,7 @@ export function CustomTabList(props: TabListProps) {
     <View {...props} style={styles.tabListContainer}>
       <ThemedView type="backgroundElement" style={styles.innerContainer}>
         <ThemedText type="smallBold" style={styles.brandText}>
-          Expo Starter
+          HappyBaby
         </ThemedText>
 
         {props.children}
@@ -101,9 +111,27 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   tabButtonView: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
+  },
+  badge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    color: '#ffffff',
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '700',
   },
   externalPressable: {
     flexDirection: 'row',
