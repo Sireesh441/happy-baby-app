@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { ProductImageCarousel } from '@/components/product-image-carousel';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { useAuth } from '@/context/auth-context';
 import { useCart } from '@/context/cart-context';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchProductById, fetchProducts, getProductImageUrl, type Product } from '@/lib/api';
@@ -17,9 +18,11 @@ const MAX_RELATED_PRODUCTS = 4;
 
 export default function ProductDetailScreen() {
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { addItem } = useCart();
+  const { user } = useAuth();
 
   const productId = rawId ? Number(rawId) : NaN;
 
@@ -85,6 +88,15 @@ export default function ProductDetailScreen() {
     addItem(product, quantity);
     setAdded(true);
     setTimeout(() => setAdded(false), ADDED_FEEDBACK_DURATION_MS);
+  }
+
+  function handleTryItOn() {
+    if (!product) return;
+    if (user) {
+      router.push({ pathname: '/try-on/[id]', params: { id: String(product.id) } });
+    } else {
+      router.push({ pathname: '/login', params: { redirectTo: `/try-on/${product.id}` } });
+    }
   }
 
   if (isLoading) {
@@ -195,6 +207,14 @@ export default function ProductDetailScreen() {
               </Pressable>
             </View>
           </View>
+
+          {product.category === 'Clothing' && (
+            <Pressable onPress={handleTryItOn} style={styles.tryOnButton}>
+              <ThemedText type="smallBold" style={styles.tryOnButtonText}>
+                👗 Try It On
+              </ThemedText>
+            </Pressable>
+          )}
         </View>
 
         {relatedProducts.length > 0 && (
@@ -331,6 +351,17 @@ const styles = StyleSheet.create({
   qtyValue: {
     minWidth: 20,
     textAlign: 'center',
+  },
+  tryOnButton: {
+    marginTop: Spacing.four,
+    borderRadius: Spacing.five,
+    borderWidth: 1,
+    borderColor: '#3c87f7',
+    paddingVertical: Spacing.three,
+    alignItems: 'center',
+  },
+  tryOnButtonText: {
+    color: '#3c87f7',
   },
   relatedSection: {
     marginTop: Spacing.five,
