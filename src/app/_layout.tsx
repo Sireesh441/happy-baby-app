@@ -21,6 +21,11 @@ export default function RootLayout() {
             <Stack.Screen name="shop/[vertical]" options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
             <Stack.Screen name="product/[id]" options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
             <Stack.Screen name="checkout" options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
+            <Stack.Screen
+              name="razorpay-checkout"
+              options={{ headerShown: true, presentation: 'modal', title: 'Payment' }}
+            />
+            <Stack.Screen name="order-confirmation" options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
             <Stack.Screen name="login" options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
             <Stack.Screen name="signup" options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
             <Stack.Screen name="try-on/[id]" options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
