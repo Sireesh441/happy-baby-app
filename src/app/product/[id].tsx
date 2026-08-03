@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -10,11 +11,13 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useCart } from '@/context/cart-context';
+import { useWishlist } from '@/context/wishlist-context';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchProductById, fetchProducts, getProductImageUrl, type Product } from '@/lib/api';
 
 const ADDED_FEEDBACK_DURATION_MS = 1500;
 const MAX_RELATED_PRODUCTS = 4;
+const LOW_STOCK_THRESHOLD = 5;
 
 export default function ProductDetailScreen() {
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
@@ -23,6 +26,7 @@ export default function ProductDetailScreen() {
   const insets = useSafeAreaInsets();
   const { addItem } = useCart();
   const { user } = useAuth();
+  const { isWishlisted, toggleWishlist } = useWishlist();
 
   const productId = rawId ? Number(rawId) : NaN;
 
@@ -32,6 +36,7 @@ export default function ProductDetailScreen() {
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
+  const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!Number.isFinite(productId)) {
@@ -48,7 +53,9 @@ export default function ProductDetailScreen() {
 
     fetchProductById(productId)
       .then((result) => {
-        if (!cancelled) setProduct(result);
+        if (cancelled) return;
+        setProduct(result);
+        setSelectedSize(result?.sizes?.find((entry) => entry.available)?.size);
       })
       .catch(() => {
         if (!cancelled) setHasError(true);
@@ -84,7 +91,7 @@ export default function ProductDetailScreen() {
   }, [product]);
 
   function handleAddToCart() {
-    if (!product) return;
+    if (!product || !canAddToCart) return;
     addItem(product, quantity);
     setAdded(true);
     setTimeout(() => setAdded(false), ADDED_FEEDBACK_DURATION_MS);
@@ -126,6 +133,11 @@ export default function ProductDetailScreen() {
   const imageUrl = getProductImageUrl(product);
   const totalPrice = product.price * quantity;
 
+  const sizes = product.sizes ?? [];
+  const hasSizes = sizes.length > 0;
+  const outOfStock = product.inStock === false;
+  const canAddToCart = !outOfStock && (!hasSizes || Boolean(selectedSize));
+
   return (
     <ThemedView style={styles.container}>
       <Stack.Screen options={{ title: '' }} />
@@ -140,6 +152,20 @@ export default function ProductDetailScreen() {
               </ThemedText>
             </View>
           )}
+          <Pressable
+            onPress={() => toggleWishlist(product)}
+            hitSlop={8}
+            style={styles.wishlistButton}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isWishlisted(product.id) ? `Remove ${product.name} from wishlist` : `Save ${product.name} to wishlist`
+            }>
+            <Ionicons
+              name={isWishlisted(product.id) ? 'heart' : 'heart-outline'}
+              size={22}
+              color={isWishlisted(product.id) ? '#dc2626' : '#333333'}
+            />
+          </Pressable>
         </View>
 
         <View style={styles.content}>
@@ -180,6 +206,48 @@ export default function ProductDetailScreen() {
               {product.description}
             </ThemedText>
           </View>
+
+          {hasSizes && (
+            <View style={styles.sizeSection}>
+              <ThemedText type="smallBold">Size</ThemedText>
+              <View style={styles.sizeRow}>
+                {sizes.map((entry) => {
+                  const isSelected = selectedSize === entry.size;
+                  const isLowStock = entry.available && entry.quantity <= LOW_STOCK_THRESHOLD;
+
+                  return (
+                    <Pressable
+                      key={entry.size}
+                      disabled={!entry.available}
+                      onPress={() => setSelectedSize(entry.size)}
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: !entry.available, selected: isSelected }}
+                      style={[
+                        styles.sizeButton,
+                        !entry.available && styles.sizeButtonDisabled,
+                        isSelected && styles.sizeButtonSelected,
+                      ]}>
+                      <ThemedText
+                        type="smallBold"
+                        style={!entry.available ? styles.sizeTextDisabled : isSelected ? styles.sizeTextSelected : undefined}>
+                        {entry.size}
+                      </ThemedText>
+                      {!entry.available && (
+                        <ThemedText type="small" style={styles.sizeTextDisabled}>
+                          Out of Stock
+                        </ThemedText>
+                      )}
+                      {isLowStock && (
+                        <ThemedText type="small" style={styles.lowStockText}>
+                          Only {entry.quantity} left!
+                        </ThemedText>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          )}
 
           <View style={styles.qtyRow}>
             <ThemedText type="smallBold">Quantity</ThemedText>
@@ -245,9 +313,12 @@ export default function ProductDetailScreen() {
             ₹{totalPrice}
           </ThemedText>
         </View>
-        <Pressable onPress={handleAddToCart} style={styles.addButton}>
+        <Pressable
+          onPress={handleAddToCart}
+          disabled={!canAddToCart}
+          style={[styles.addButton, !canAddToCart && styles.addButtonDisabled]}>
           <ThemedText type="smallBold" style={styles.addButtonText}>
-            {added ? 'Added ✓' : 'Add to Cart'}
+            {outOfStock ? 'Out of Stock' : added ? 'Added ✓' : 'Add to Cart'}
           </ThemedText>
         </Pressable>
       </ThemedView>
@@ -282,6 +353,17 @@ const styles = StyleSheet.create({
   },
   tagText: {
     color: '#92400e',
+  },
+  wishlistButton: {
+    position: 'absolute',
+    top: Spacing.three,
+    right: Spacing.three,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     padding: Spacing.four,
@@ -322,6 +404,40 @@ const styles = StyleSheet.create({
   },
   description: {
     lineHeight: 22,
+  },
+  sizeSection: {
+    marginTop: Spacing.four,
+    gap: Spacing.two,
+  },
+  sizeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  sizeButton: {
+    alignItems: 'center',
+    borderRadius: Spacing.three,
+    borderWidth: 2,
+    borderColor: 'rgba(60,135,247,0.4)',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  sizeButtonSelected: {
+    borderColor: '#3c87f7',
+    backgroundColor: 'rgba(60,135,247,0.1)',
+  },
+  sizeButtonDisabled: {
+    borderColor: 'rgba(128,128,128,0.25)',
+    backgroundColor: 'rgba(128,128,128,0.08)',
+  },
+  sizeTextSelected: {
+    color: '#3c87f7',
+  },
+  sizeTextDisabled: {
+    color: '#9ca3af',
+  },
+  lowStockText: {
+    color: '#d97706',
   },
   qtyRow: {
     marginTop: Spacing.four,
@@ -405,6 +521,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  addButtonDisabled: {
+    backgroundColor: '#cbd5e1',
   },
   addButtonText: {
     color: '#ffffff',

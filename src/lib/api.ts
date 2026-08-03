@@ -3,6 +3,8 @@ const PRODUCTS_ENDPOINT = `${BACKEND_URL}/api/products`;
 
 export type ProductVertical = 'kids' | 'men' | 'women';
 
+export type SizeEntry = { size: string; quantity: number; available: boolean };
+
 export type Product = {
   id: number;
   name: string;
@@ -18,6 +20,10 @@ export type Product = {
   color: string;
   image?: string;
   stock: number;
+  // Only populated for products created/updated via the Excel catalog
+  // import on the backend -- manually added products won't have these.
+  sizes?: SizeEntry[];
+  inStock?: boolean;
 };
 
 export type FetchProductsParams = {
