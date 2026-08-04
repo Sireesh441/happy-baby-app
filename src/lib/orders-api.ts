@@ -78,3 +78,10 @@ export async function fetchOrderById(token: string, orderId: number): Promise<Or
   if (response.status === 404) return null;
   return parseJson(response, 'Could not load order details.');
 }
+
+export async function fetchOrders(token: string): Promise<Order[]> {
+  const response = await fetch(`${BACKEND_URL}/api/orders`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseJson(response, 'Could not load your orders.');
+}

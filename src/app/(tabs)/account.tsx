@@ -1,4 +1,6 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
+import type { ComponentProps } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -12,6 +14,14 @@ export default function AccountScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { user, isLoading, logout } = useAuth();
+
+  function goToOrderHistory() {
+    if (user) {
+      router.push('/order-history');
+    } else {
+      router.push({ pathname: '/login', params: { redirectTo: '/order-history' } });
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -67,8 +77,39 @@ export default function AccountScreen() {
             </Pressable>
           </View>
         )}
+
+        {!isLoading && (
+          <View style={styles.menu}>
+            <MenuRow icon="receipt-outline" label="Order History" onPress={goToOrderHistory} />
+            <MenuRow icon="heart-outline" label="Wishlist" onPress={() => router.push('/wishlist')} />
+            <MenuRow
+              icon="chatbubble-ellipses-outline"
+              label="Ask Happy Baby"
+              onPress={() => router.push('/assistant')}
+            />
+          </View>
+        )}
       </View>
     </SafeAreaView>
+  );
+}
+
+function MenuRow({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={styles.menuRow}>
+      <Ionicons name={icon} size={20} color={theme.text} />
+      <ThemedText style={styles.menuRowLabel}>{label}</ThemedText>
+      <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
+    </Pressable>
   );
 }
 
@@ -83,6 +124,21 @@ const styles = StyleSheet.create({
   },
   title: {
     marginBottom: Spacing.five,
+  },
+  menu: {
+    marginTop: Spacing.five,
+    gap: Spacing.one,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingVertical: Spacing.three,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(128,128,128,0.25)',
+  },
+  menuRowLabel: {
+    flex: 1,
   },
   centered: {
     flex: 1,

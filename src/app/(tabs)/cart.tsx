@@ -2,17 +2,21 @@ import { useRouter } from 'expo-router';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { EmptyState } from '@/components/empty-state';
 import { ProductThumbnail } from '@/components/product-thumbnail';
+import { Skeleton } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useCart, type CartLine } from '@/context/cart-context';
 
+const SKELETON_ROW_COUNT = 3;
+
 export default function CartScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { lines, itemCount, subtotal, updateQuantity, removeItem } = useCart();
+  const { lines, itemCount, subtotal, isLoaded, updateQuantity, removeItem } = useCart();
   const { user, isLoading: isAuthLoading } = useAuth();
 
   function handleCheckoutPress() {
@@ -31,19 +35,29 @@ export default function CartScreen() {
           Cart
         </ThemedText>
 
-        {lines.length === 0 ? (
-          <View style={styles.emptyState}>
-            <ThemedText style={styles.emptyEmoji}>🛒</ThemedText>
-            <ThemedText type="smallBold">Your cart is empty</ThemedText>
-            <ThemedText themeColor="textSecondary" style={styles.emptyText}>
-              Looks like you haven&apos;t added anything yet.
-            </ThemedText>
-            <Pressable onPress={() => router.push('/')} style={styles.continueButton}>
-              <ThemedText type="smallBold" style={styles.continueButtonText}>
-                Continue Shopping
-              </ThemedText>
-            </Pressable>
+        {!isLoaded ? (
+          <View style={styles.listContent}>
+            {Array.from({ length: SKELETON_ROW_COUNT }).map((_, index) => (
+              <View key={index} style={styles.row}>
+                <View style={styles.rowTop}>
+                  <Skeleton width={64} height={64} borderRadius={Spacing.three} />
+                  <View style={styles.rowInfo}>
+                    <Skeleton height={16} />
+                    <Skeleton width="50%" height={14} />
+                    <Skeleton width="30%" height={16} />
+                  </View>
+                </View>
+              </View>
+            ))}
           </View>
+        ) : lines.length === 0 ? (
+          <EmptyState
+            emoji="🛒"
+            title="Your cart is empty"
+            message="Looks like you haven't added anything yet."
+            actionLabel="Continue Shopping"
+            onAction={() => router.push('/')}
+          />
         ) : (
           <>
             <ScrollView
@@ -147,30 +161,6 @@ const styles = StyleSheet.create({
   title: {
     paddingHorizontal: Spacing.four,
     marginBottom: Spacing.three,
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.one,
-    paddingHorizontal: Spacing.five,
-  },
-  emptyEmoji: {
-    fontSize: 56,
-    marginBottom: Spacing.two,
-  },
-  emptyText: {
-    textAlign: 'center',
-  },
-  continueButton: {
-    marginTop: Spacing.four,
-    backgroundColor: '#3c87f7',
-    borderRadius: Spacing.five,
-    paddingHorizontal: Spacing.five,
-    paddingVertical: Spacing.three,
-  },
-  continueButtonText: {
-    color: '#ffffff',
   },
   list: {
     flex: 1,

@@ -1,18 +1,19 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ErrorState } from '@/components/error-state';
 import { ProductCard } from '@/components/product-card';
 import { ProductImageCarousel } from '@/components/product-image-carousel';
+import { Skeleton } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useCart } from '@/context/cart-context';
 import { useWishlist } from '@/context/wishlist-context';
-import { useTheme } from '@/hooks/use-theme';
 import { fetchProductById, fetchProducts, getProductImageUrl, type Product } from '@/lib/api';
 
 const ADDED_FEEDBACK_DURATION_MS = 1500;
@@ -22,7 +23,6 @@ const LOW_STOCK_THRESHOLD = 5;
 export default function ProductDetailScreen() {
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { addItem } = useCart();
   const { user } = useAuth();
@@ -37,6 +37,7 @@ export default function ProductDetailScreen() {
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     if (!Number.isFinite(productId)) {
@@ -67,7 +68,7 @@ export default function ProductDetailScreen() {
     return () => {
       cancelled = true;
     };
-  }, [productId]);
+  }, [productId, retryKey]);
 
   useEffect(() => {
     if (!product) {
@@ -108,20 +109,37 @@ export default function ProductDetailScreen() {
 
   if (isLoading) {
     return (
-      <ThemedView style={styles.statusContainer}>
+      <ThemedView style={styles.container}>
         <Stack.Screen options={{ title: '' }} />
-        <ActivityIndicator color={theme.textSecondary} />
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <Skeleton height={320} borderRadius={0} />
+          <View style={styles.content}>
+            <Skeleton width="40%" height={12} />
+            <Skeleton width="80%" height={28} style={styles.skeletonSpacingTop} />
+            <Skeleton width="50%" height={16} style={styles.skeletonSpacingTop} />
+            <Skeleton width="35%" height={30} style={styles.skeletonSpacingTop} />
+            <Skeleton height={16} style={styles.skeletonSpacingLarge} />
+            <Skeleton width="70%" height={16} style={styles.skeletonSpacingTop} />
+          </View>
+        </ScrollView>
       </ThemedView>
     );
   }
 
-  if (hasError || !product) {
+  if (hasError) {
     return (
       <ThemedView style={styles.statusContainer}>
         <Stack.Screen options={{ title: '' }} />
-        <ThemedText themeColor="textSecondary">
-          {hasError ? "Couldn't load this product. Check your connection." : 'Product not found.'}
-        </ThemedText>
+        <ErrorState message="Couldn't load this product. Check your connection." onRetry={() => setRetryKey((k) => k + 1)} />
+      </ThemedView>
+    );
+  }
+
+  if (!product) {
+    return (
+      <ThemedView style={styles.statusContainer}>
+        <Stack.Screen options={{ title: '' }} />
+        <ThemedText themeColor="textSecondary">Product not found.</ThemedText>
       </ThemedView>
     );
   }
@@ -335,6 +353,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.four,
+  },
+  skeletonSpacingTop: {
+    marginTop: Spacing.two,
+  },
+  skeletonSpacingLarge: {
+    marginTop: Spacing.four,
   },
   scrollContent: {
     paddingBottom: Spacing.six,

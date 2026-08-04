@@ -1,13 +1,16 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { ErrorState } from '@/components/error-state';
 import { ProductCard } from '@/components/product-card';
+import { ProductCardSkeleton } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
 import { fetchProducts, type Product, type ProductVertical } from '@/lib/api';
+
+const SKELETON_COUNT = 6;
 
 const VERTICAL_LABELS: Record<ProductVertical, string> = {
   kids: 'Kids',
@@ -29,7 +32,6 @@ type CategoryTab = {
 
 export default function ShopScreen() {
   const { vertical: rawVertical } = useLocalSearchParams<{ vertical: string }>();
-  const theme = useTheme();
 
   const vertical = rawVertical && isProductVertical(rawVertical) ? rawVertical : undefined;
   const title = vertical ? VERTICAL_LABELS[vertical] : 'Shop';
@@ -38,6 +40,7 @@ export default function ShopScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORY);
+  const [retryKey, setRetryKey] = useState(0);
 
   // Fetched once per vertical; category taps below just filter this in memory
   // so switching categories never re-hits the network or reloads the screen.
@@ -66,7 +69,7 @@ export default function ShopScreen() {
     return () => {
       cancelled = true;
     };
-  }, [vertical]);
+  }, [vertical, retryKey]);
 
   const categories = useMemo<CategoryTab[]>(() => {
     const seen = new Map<string, string>();
@@ -95,13 +98,13 @@ export default function ShopScreen() {
           <ThemedText themeColor="textSecondary">Unknown shop category.</ThemedText>
         </View>
       ) : isLoading ? (
-        <View style={styles.statusContainer}>
-          <ActivityIndicator color={theme.textSecondary} />
+        <View style={styles.skeletonGrid}>
+          {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
+            <ProductCardSkeleton key={index} style={styles.skeletonCard} />
+          ))}
         </View>
       ) : hasError ? (
-        <View style={styles.statusContainer}>
-          <ThemedText themeColor="textSecondary">Couldn&apos;t load products. Check your connection.</ThemedText>
-        </View>
+        <ErrorState message="Couldn't load products. Check your connection." onRetry={() => setRetryKey((k) => k + 1)} />
       ) : (
         <View style={styles.body}>
           <ThemedView type="backgroundElement" style={styles.rail}>
@@ -176,6 +179,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: Spacing.six,
+  },
+  skeletonGrid: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: Spacing.three,
+    gap: Spacing.two,
+  },
+  skeletonCard: {
+    width: '47%',
   },
   body: {
     flex: 1,
