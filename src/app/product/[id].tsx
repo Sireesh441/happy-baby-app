@@ -5,6 +5,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState } from '@/components/error-state';
+import { FitConfidence } from '@/components/fit-confidence';
 import { ProductCard } from '@/components/product-card';
 import { ProductImageCarousel } from '@/components/product-image-carousel';
 import { Skeleton } from '@/components/skeleton';
@@ -266,6 +267,8 @@ export default function ProductDetailScreen() {
               </View>
             </View>
           )}
+
+          {product.category === 'Clothing' && <FitConfidence vertical={product.vertical} />}
 
           <View style={styles.qtyRow}>
             <ThemedText type="smallBold">Quantity</ThemedText>
