@@ -127,7 +127,22 @@ export default function CheckoutScreen() {
       }
 
       const razorpayOrder = await createRazorpayOrder(token, total);
-      const items = lines.map((line) => ({ productId: line.productId, quantity: line.quantity }));
+      // Bulk lines send { type: 'bulk', productGroupId, packSize, breakdown, packs }
+      // -- no price field, on purpose. happy-baby's POST /api/orders re-resolves
+      // pricePerUnit itself from the ProductGroup's current bulkPricing and
+      // never trusts anything this app might send, same discipline retail
+      // items get (their price is looked up server-side too, never sent here).
+      const items = lines.map((line) =>
+        line.type === 'bulk'
+          ? {
+              type: 'bulk' as const,
+              productGroupId: line.productGroupId,
+              packSize: line.packSize,
+              breakdown: line.breakdownDisplay.map(({ productId, size, quantity }) => ({ productId, size, quantity })),
+              packs: line.quantity,
+            }
+          : { productId: line.productId, quantity: line.quantity }
+      );
 
       // Native keeps the WebView-based flow (Razorpay's RN SDK doesn't support
       // the New Architecture setup this app uses). Web has no react-native-webview
@@ -288,14 +303,23 @@ export default function CheckoutScreen() {
 
         <View style={styles.section}>
           <ThemedText type="smallBold">Order Summary</ThemedText>
-          {lines.map((line) => (
-            <View key={line.productId} style={styles.summaryLine}>
-              <ThemedText themeColor="textSecondary" style={styles.summaryLineName} numberOfLines={1}>
-                {line.product.name} × {line.quantity}
-              </ThemedText>
-              <ThemedText>₹{line.product.price * line.quantity}</ThemedText>
-            </View>
-          ))}
+          {lines.map((line) =>
+            line.type === 'bulk' ? (
+              <View key={line.id} style={styles.summaryLine}>
+                <ThemedText themeColor="textSecondary" style={styles.summaryLineName} numberOfLines={1}>
+                  {line.productGroupName} — Bulk {line.packSize}-Pack × {line.quantity}
+                </ThemedText>
+                <ThemedText>₹{line.pricePerUnit * line.packSize * line.quantity}</ThemedText>
+              </View>
+            ) : (
+              <View key={line.productId} style={styles.summaryLine}>
+                <ThemedText themeColor="textSecondary" style={styles.summaryLineName} numberOfLines={1}>
+                  {line.product.name} × {line.quantity}
+                </ThemedText>
+                <ThemedText>₹{line.product.price * line.quantity}</ThemedText>
+              </View>
+            )
+          )}
         </View>
       </ScrollView>
 

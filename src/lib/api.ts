@@ -37,17 +37,42 @@ export type Product = {
 // variant. Absent on a single product fetched via GET /api/products/:id.
 export type ProductListItem = Product & { variantCount: number };
 
+// Resolved wholesale/bulk per-unit price for each pack size -- always fully
+// populated (an explicit override on the group wins per pack size,
+// anything unset falls back to a computed default -- see happy-baby's
+// lib/bulkPricing.ts, the backend that resolves this).
+export type BulkPricing = {
+  pack5: number;
+  pack10: number;
+};
+
 export type ProductGroup = {
   id: number;
   name: string;
   vertical: ProductVertical;
   category: string;
   description?: string;
+  bulkPricing: BulkPricing;
 };
 
 export type ProductGroupDetail = {
   group: ProductGroup;
   variants: Product[];
+};
+
+// A wholesale buyer's custom mix of sizes/colors from one ProductGroup,
+// summing to exactly 5 or 10 units. Matches happy-baby's
+// app/data/products.ts BulkBreakdownEntry -- the shape both this app's
+// local cart line and POST /api/orders's bulk-pack payload use.
+export type BulkBreakdownEntry = { productId: number; size?: string; quantity: number };
+
+// A breakdown entry denormalized with display info (name/image/emoji) at
+// pack-build time, so the cart/checkout/confirmation/history screens can
+// show what's in the pack without re-fetching each product.
+export type BulkBreakdownDisplayEntry = BulkBreakdownEntry & {
+  name: string;
+  image?: string;
+  emoji: string;
 };
 
 export type FetchProductsParams = {

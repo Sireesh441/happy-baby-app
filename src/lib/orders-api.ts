@@ -1,4 +1,5 @@
 import { BACKEND_URL } from '@/lib/api';
+import type { BulkBreakdownDisplayEntry, BulkBreakdownEntry } from '@/lib/api';
 
 export type ShippingAddress = {
   name: string;
@@ -9,7 +10,8 @@ export type ShippingAddress = {
   pincode: string;
 };
 
-export type OrderItem = {
+export type RetailOrderItem = {
+  type?: 'retail';
   id: number;
   name: string;
   quantity: number;
@@ -18,6 +20,24 @@ export type OrderItem = {
   emoji: string;
   color: string;
 };
+
+// A wholesale bulk pack placed as one order line. `pricePerUnit` and
+// `breakdownDisplay` are resolved and snapshotted server-side at
+// order-creation time -- happy-baby's POST /api/orders never trusts
+// whatever price this app might send, same as it never has for retail
+// items either.
+export type BulkOrderItem = {
+  type: 'bulk';
+  productGroupId: number;
+  productGroupName: string;
+  packSize: number;
+  // Number of packs purchased (each pack itself contains `packSize` units).
+  quantity: number;
+  pricePerUnit: number;
+  breakdownDisplay: BulkBreakdownDisplayEntry[];
+};
+
+export type OrderItem = RetailOrderItem | BulkOrderItem;
 
 export type Order = {
   id: number;
@@ -54,11 +74,26 @@ export async function createRazorpayOrder(token: string, amount: number): Promis
   return parseJson(response, 'Could not start payment. Please try again.');
 }
 
+export type RetailOrderItemInput = { productId: number; quantity: number };
+
+// Matches happy-baby's POST /api/orders bulk-item shape exactly -- no price
+// field, on purpose: the backend re-resolves pricePerUnit itself from the
+// ProductGroup's current bulkPricing and ignores anything else sent here.
+export type BulkOrderItemInput = {
+  type: 'bulk';
+  productGroupId: number;
+  packSize: 5 | 10;
+  breakdown: BulkBreakdownEntry[];
+  packs?: number;
+};
+
+export type OrderItemInput = RetailOrderItemInput | BulkOrderItemInput;
+
 export type PlaceOrderInput = {
   razorpay_order_id: string;
   razorpay_payment_id: string;
   razorpay_signature: string;
-  items: { productId: number; quantity: number }[];
+  items: OrderItemInput[];
   shippingAddress: ShippingAddress;
 };
 

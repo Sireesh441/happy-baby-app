@@ -9,14 +9,14 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
-import { useCart, type CartLine } from '@/context/cart-context';
+import { useCart, type BulkCartLine, type SingleCartLine } from '@/context/cart-context';
 
 const SKELETON_ROW_COUNT = 3;
 
 export default function CartScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { lines, itemCount, subtotal, isLoaded, updateQuantity, removeItem } = useCart();
+  const { lines, itemCount, subtotal, isLoaded, updateQuantity, removeItem, removeBulkLine } = useCart();
   const { user, isLoading: isAuthLoading } = useAuth();
 
   function handleCheckoutPress() {
@@ -64,15 +64,19 @@ export default function CartScreen() {
               style={styles.list}
               contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}>
-              {lines.map((line) => (
-                <CartLineRow
-                  key={line.productId}
-                  line={line}
-                  onIncrease={() => updateQuantity(line.productId, line.quantity + 1)}
-                  onDecrease={() => updateQuantity(line.productId, line.quantity - 1)}
-                  onRemove={() => removeItem(line.productId)}
-                />
-              ))}
+              {lines.map((line) =>
+                line.type === 'bulk' ? (
+                  <BulkCartLineRow key={line.id} line={line} onRemove={() => removeBulkLine(line.id)} />
+                ) : (
+                  <CartLineRow
+                    key={line.productId}
+                    line={line}
+                    onIncrease={() => updateQuantity(line.productId, line.quantity + 1)}
+                    onDecrease={() => updateQuantity(line.productId, line.quantity - 1)}
+                    onRemove={() => removeItem(line.productId)}
+                  />
+                )
+              )}
             </ScrollView>
 
             <ThemedView
@@ -104,13 +108,49 @@ export default function CartScreen() {
   );
 }
 
+function BulkCartLineRow({ line, onRemove }: { line: BulkCartLine; onRemove: () => void }) {
+  const total = line.pricePerUnit * line.packSize * line.quantity;
+  const summary = line.breakdownDisplay
+    .map((entry) => `${entry.name}${entry.size ? ` (${entry.size})` : ''} ×${entry.quantity}`)
+    .join(', ');
+
+  return (
+    <ThemedView type="backgroundElement" style={styles.row}>
+      <View style={styles.rowTop}>
+        <View style={styles.bulkIconTile}>
+          <ThemedText style={styles.bulkIcon}>📦</ThemedText>
+        </View>
+        <View style={styles.rowInfo}>
+          <ThemedText numberOfLines={1}>
+            {line.productGroupName} — Bulk {line.packSize}-Pack
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
+            {summary}
+          </ThemedText>
+          <ThemedText type="smallBold">
+            ₹{line.pricePerUnit}/unit · {line.quantity} pack{line.quantity === 1 ? '' : 's'}
+          </ThemedText>
+        </View>
+        <Pressable onPress={onRemove} hitSlop={8} accessibilityLabel={`Remove ${line.productGroupName} bulk pack from cart`}>
+          <ThemedText themeColor="textSecondary" style={styles.removeIcon}>
+            ✕
+          </ThemedText>
+        </Pressable>
+      </View>
+      <ThemedText type="smallBold" style={styles.bulkTotal}>
+        ₹{total}
+      </ThemedText>
+    </ThemedView>
+  );
+}
+
 function CartLineRow({
   line,
   onIncrease,
   onDecrease,
   onRemove,
 }: {
-  line: CartLine;
+  line: SingleCartLine;
   onIncrease: () => void;
   onDecrease: () => void;
   onRemove: () => void;
@@ -186,6 +226,20 @@ const styles = StyleSheet.create({
   removeIcon: {
     fontSize: 16,
     padding: Spacing.one,
+  },
+  bulkIconTile: {
+    width: 64,
+    height: 64,
+    borderRadius: Spacing.three,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(79,70,229,0.12)',
+  },
+  bulkIcon: {
+    fontSize: 28,
+  },
+  bulkTotal: {
+    alignSelf: 'flex-end',
   },
   qtyStepper: {
     alignSelf: 'flex-end',

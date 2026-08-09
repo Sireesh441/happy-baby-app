@@ -15,18 +15,32 @@ import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useCart } from '@/context/cart-context';
 import { useWishlist } from '@/context/wishlist-context';
-import { fetchProductById, fetchProductGroup, fetchProducts, getProductImageUrl, type Product } from '@/lib/api';
+import {
+  fetchProductById,
+  fetchProductGroup,
+  fetchProducts,
+  getProductImageUrl,
+  type BulkBreakdownDisplayEntry,
+  type Product,
+  type ProductGroup,
+} from '@/lib/api';
 import { colorNameToHex, swatchNeedsBorder } from '@/lib/color-swatch';
 
 const ADDED_FEEDBACK_DURATION_MS = 1500;
 const MAX_RELATED_PRODUCTS = 4;
 const LOW_STOCK_THRESHOLD = 5;
 
+type PurchaseMode = 'retail' | 'wholesale';
+
+function packSelectionKey(productId: number, size: string | undefined): string {
+  return `${productId}:${size ?? ''}`;
+}
+
 export default function ProductDetailScreen() {
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { addItem } = useCart();
+  const { addItem, addBulkPack } = useCart();
   const { user } = useAuth();
   const { isWishlisted, toggleWishlist } = useWishlist();
 
@@ -43,6 +57,9 @@ export default function ProductDetailScreen() {
   const [product, setProduct] = useState<Product | null>(null);
   const [variants, setVariants] = useState<Product[]>([]);
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
+  // The ProductGroup itself (name, bulkPricing) -- null for an ungrouped
+  // product, in which case the Retail/Wholesale toggle never renders at all.
+  const [groupInfo, setGroupInfo] = useState<ProductGroup | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
@@ -50,6 +67,12 @@ export default function ProductDetailScreen() {
   const [added, setAdded] = useState(false);
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
   const [retryKey, setRetryKey] = useState(0);
+
+  // Wholesale/bulk-pack picker state.
+  const [purchaseMode, setPurchaseMode] = useState<PurchaseMode>('retail');
+  const [selectedPackSize, setSelectedPackSize] = useState<5 | 10 | null>(null);
+  const [packSelections, setPackSelections] = useState<Record<string, number>>({});
+  const [packAdded, setPackAdded] = useState(false);
 
   const activeProduct = useMemo(
     () => variants.find((variant) => variant.id === selectedVariantId) ?? product,
@@ -68,8 +91,13 @@ export default function ProductDetailScreen() {
     setProduct(null);
     setVariants([]);
     setSelectedVariantId(null);
+    setGroupInfo(null);
     setQuantity(1);
     setAdded(false);
+    setPurchaseMode('retail');
+    setSelectedPackSize(null);
+    setPackSelections({});
+    setPackAdded(false);
 
     (async () => {
       try {
@@ -83,6 +111,7 @@ export default function ProductDetailScreen() {
 
         if (result.productGroupId != null) {
           const group = await fetchProductGroup(result.productGroupId);
+          if (!cancelled) setGroupInfo(group?.group ?? null);
           if (cancelled) return;
           setVariants(group?.variants && group.variants.length > 0 ? group.variants : [result]);
         } else {
@@ -141,6 +170,75 @@ export default function ProductDetailScreen() {
     addItem(activeProduct, quantity);
     setAdded(true);
     setTimeout(() => setAdded(false), ADDED_FEEDBACK_DURATION_MS);
+  }
+
+  const packTotalSelected = useMemo(
+    () => Object.values(packSelections).reduce((sum, count) => sum + count, 0),
+    [packSelections]
+  );
+  const canAddPack = selectedPackSize !== null && packTotalSelected === selectedPackSize;
+
+  function handleSelectPackSize(size: 5 | 10) {
+    setSelectedPackSize(size);
+    // A half-built 5-pack doesn't carry over into a 10-pack (or vice versa,
+    // or re-selecting the same size) -- always start the picker fresh.
+    setPackSelections({});
+    setPackAdded(false);
+  }
+
+  function handlePackEntryChange(productId: number, size: string | undefined, delta: 1 | -1) {
+    if (!selectedPackSize) return;
+    setPackSelections((current) => {
+      const key = packSelectionKey(productId, size);
+      const count = current[key] ?? 0;
+      if (delta > 0) {
+        // Enforce the pack count strictly -- can't select past the target
+        // total, only rebalance (decrease one entry, increase another).
+        if (packTotalSelected >= selectedPackSize) return current;
+        return { ...current, [key]: count + 1 };
+      }
+      if (count <= 1) {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      }
+      return { ...current, [key]: count - 1 };
+    });
+  }
+
+  function handleAddPackToCart() {
+    if (!groupInfo || !selectedPackSize || !canAddPack) return;
+
+    const breakdownDisplay: BulkBreakdownDisplayEntry[] = [];
+    for (const [key, quantityInPack] of Object.entries(packSelections)) {
+      if (quantityInPack <= 0) continue;
+      const [productIdRaw, size] = key.split(':');
+      const variant = variants.find((v) => v.id === Number(productIdRaw));
+      if (!variant) continue;
+      breakdownDisplay.push({
+        productId: variant.id,
+        size: size || undefined,
+        quantity: quantityInPack,
+        name: variant.name,
+        image: variant.image,
+        emoji: variant.emoji,
+      });
+    }
+
+    const pricePerUnit = selectedPackSize === 5 ? groupInfo.bulkPricing.pack5 : groupInfo.bulkPricing.pack10;
+
+    addBulkPack({
+      productGroupId: groupInfo.id,
+      productGroupName: groupInfo.name,
+      packSize: selectedPackSize,
+      pricePerUnit,
+      breakdownDisplay,
+    });
+
+    setPackAdded(true);
+    setPackSelections({});
+    setSelectedPackSize(null);
+    setTimeout(() => setPackAdded(false), ADDED_FEEDBACK_DURATION_MS);
   }
 
   function handleTryItOn() {
@@ -289,21 +387,46 @@ export default function ProductDetailScreen() {
             </View>
           )}
 
-          <View style={styles.priceRow}>
-            <ThemedText type="title" style={styles.price}>
-              ₹{activeProduct.price}
-            </ThemedText>
-            {activeProduct.originalPrice && (
-              <ThemedText themeColor="textSecondary" style={styles.strikethrough}>
-                ₹{activeProduct.originalPrice}
+          {groupInfo && (
+            <View style={styles.modeToggleRow}>
+              <Pressable
+                onPress={() => setPurchaseMode('retail')}
+                style={[styles.modeTab, purchaseMode === 'retail' && styles.modeTabActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: purchaseMode === 'retail' }}>
+                <ThemedText type="smallBold" style={purchaseMode === 'retail' ? styles.modeTabTextActive : styles.modeTabText}>
+                  Retail
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                onPress={() => setPurchaseMode('wholesale')}
+                style={[styles.modeTab, purchaseMode === 'wholesale' && styles.modeTabActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: purchaseMode === 'wholesale' }}>
+                <ThemedText type="smallBold" style={purchaseMode === 'wholesale' ? styles.modeTabTextActive : styles.modeTabText}>
+                  Wholesale
+                </ThemedText>
+              </Pressable>
+            </View>
+          )}
+
+          {purchaseMode === 'retail' && (
+            <View style={styles.priceRow}>
+              <ThemedText type="title" style={styles.price}>
+                ₹{activeProduct.price}
               </ThemedText>
-            )}
-            {discountPercent !== undefined && discountPercent > 0 && (
-              <ThemedText type="smallBold" style={styles.discountText}>
-                {discountPercent}% off
-              </ThemedText>
-            )}
-          </View>
+              {activeProduct.originalPrice && (
+                <ThemedText themeColor="textSecondary" style={styles.strikethrough}>
+                  ₹{activeProduct.originalPrice}
+                </ThemedText>
+              )}
+              {discountPercent !== undefined && discountPercent > 0 && (
+                <ThemedText type="smallBold" style={styles.discountText}>
+                  {discountPercent}% off
+                </ThemedText>
+              )}
+            </View>
+          )}
 
           <View style={styles.descriptionBlock}>
             <ThemedText type="smallBold">About this product</ThemedText>
@@ -312,7 +435,7 @@ export default function ProductDetailScreen() {
             </ThemedText>
           </View>
 
-          {hasSizes && (
+          {purchaseMode === 'retail' && hasSizes && (
             <View style={styles.sizeSection}>
               <ThemedText type="smallBold">Size</ThemedText>
               <View style={styles.sizeRow}>
@@ -354,34 +477,124 @@ export default function ProductDetailScreen() {
             </View>
           )}
 
+          {purchaseMode === 'wholesale' && groupInfo && (
+            <View style={styles.wholesaleSection}>
+              <ThemedText type="smallBold">Buy in Bulk</ThemedText>
+              <View style={styles.packOptionsRow}>
+                <PackOptionCard
+                  label="Buy 5"
+                  packSize={5}
+                  pricePerUnit={groupInfo.bulkPricing.pack5}
+                  retailPrice={activeProduct.price}
+                  selected={selectedPackSize === 5}
+                  onPress={() => handleSelectPackSize(5)}
+                />
+                <PackOptionCard
+                  label="Buy 10"
+                  packSize={10}
+                  pricePerUnit={groupInfo.bulkPricing.pack10}
+                  retailPrice={activeProduct.price}
+                  selected={selectedPackSize === 10}
+                  onPress={() => handleSelectPackSize(10)}
+                />
+              </View>
+
+              {selectedPackSize && (
+                <View style={styles.packPicker}>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Choose exactly {selectedPackSize} units across sizes/colors — {packTotalSelected} / {selectedPackSize} selected
+                  </ThemedText>
+                  {variants.map((variant) => {
+                    const variantSizes =
+                      variant.sizes && variant.sizes.length > 0
+                        ? variant.sizes.filter((entry) => entry.available)
+                        : [{ size: undefined as string | undefined, quantity: Infinity, available: true }];
+                    const hex = colorNameToHex(variant.variantColor);
+
+                    return (
+                      <View key={variant.id} style={styles.packVariantBlock}>
+                        <View style={styles.packVariantHeader}>
+                          <View
+                            style={[
+                              styles.packVariantDot,
+                              { backgroundColor: hex },
+                              swatchNeedsBorder(hex) && styles.swatchDotBorder,
+                            ]}
+                          />
+                          <ThemedText type="small">{variant.variantColor ?? variant.name}</ThemedText>
+                        </View>
+                        {variantSizes.map((sizeEntry) => {
+                          const key = packSelectionKey(variant.id, sizeEntry.size);
+                          const count = packSelections[key] ?? 0;
+                          const atCap = packTotalSelected >= selectedPackSize;
+
+                          return (
+                            <View key={key} style={styles.packSizeRow}>
+                              <ThemedText type="small" themeColor="textSecondary">
+                                {sizeEntry.size ?? 'One Size'}
+                              </ThemedText>
+                              <View style={styles.packStepper}>
+                                <Pressable
+                                  onPress={() => handlePackEntryChange(variant.id, sizeEntry.size, -1)}
+                                  disabled={count === 0}
+                                  style={styles.packStepperButton}
+                                  hitSlop={8}
+                                  accessibilityLabel={`Decrease ${variant.variantColor ?? variant.name} ${sizeEntry.size ?? ''}`}>
+                                  <ThemedText style={[styles.qtySymbol, count === 0 && styles.packStepperTextDisabled]}>−</ThemedText>
+                                </Pressable>
+                                <ThemedText type="smallBold" style={styles.packStepperValue}>
+                                  {count}
+                                </ThemedText>
+                                <Pressable
+                                  onPress={() => handlePackEntryChange(variant.id, sizeEntry.size, 1)}
+                                  disabled={atCap}
+                                  style={styles.packStepperButton}
+                                  hitSlop={8}
+                                  accessibilityLabel={`Increase ${variant.variantColor ?? variant.name} ${sizeEntry.size ?? ''}`}>
+                                  <ThemedText style={[styles.qtySymbol, atCap && styles.packStepperTextDisabled]}>+</ThemedText>
+                                </Pressable>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          )}
+
           {activeProduct.category === 'Clothing' && <FitConfidence vertical={activeProduct.vertical} />}
 
-          <View style={styles.qtyRow}>
-            <ThemedText type="smallBold">Quantity</ThemedText>
-            <View style={styles.qtyStepper}>
-              <Pressable
-                onPress={() => setQuantity((qty) => Math.max(1, qty - 1))}
-                style={styles.qtyButton}
-                hitSlop={8}
-                accessibilityLabel="Decrease quantity">
-                <ThemedText type="subtitle" style={styles.qtySymbol}>
-                  −
+          {purchaseMode === 'retail' && (
+            <View style={styles.qtyRow}>
+              <ThemedText type="smallBold">Quantity</ThemedText>
+              <View style={styles.qtyStepper}>
+                <Pressable
+                  onPress={() => setQuantity((qty) => Math.max(1, qty - 1))}
+                  style={styles.qtyButton}
+                  hitSlop={8}
+                  accessibilityLabel="Decrease quantity">
+                  <ThemedText type="subtitle" style={styles.qtySymbol}>
+                    −
+                  </ThemedText>
+                </Pressable>
+                <ThemedText type="smallBold" style={styles.qtyValue}>
+                  {quantity}
                 </ThemedText>
-              </Pressable>
-              <ThemedText type="smallBold" style={styles.qtyValue}>
-                {quantity}
-              </ThemedText>
-              <Pressable
-                onPress={() => setQuantity((qty) => qty + 1)}
-                style={styles.qtyButton}
-                hitSlop={8}
-                accessibilityLabel="Increase quantity">
-                <ThemedText type="subtitle" style={styles.qtySymbol}>
-                  +
-                </ThemedText>
-              </Pressable>
+                <Pressable
+                  onPress={() => setQuantity((qty) => qty + 1)}
+                  style={styles.qtyButton}
+                  hitSlop={8}
+                  accessibilityLabel="Increase quantity">
+                  <ThemedText type="subtitle" style={styles.qtySymbol}>
+                    +
+                  </ThemedText>
+                </Pressable>
+              </View>
             </View>
-          </View>
+          )}
 
           {activeProduct.category === 'Clothing' && (
             <Pressable onPress={handleTryItOn} style={styles.tryOnButton}>
@@ -409,27 +622,95 @@ export default function ProductDetailScreen() {
         )}
       </ScrollView>
 
-      <ThemedView
-        type="backgroundElement"
-        style={[styles.stickyBar, { paddingBottom: Math.max(insets.bottom, Spacing.three) }]}>
-        <View>
-          <ThemedText type="small" themeColor="textSecondary">
-            Total
-          </ThemedText>
-          <ThemedText type="smallBold" style={styles.totalPrice}>
-            ₹{totalPrice}
-          </ThemedText>
-        </View>
-        <Pressable
-          onPress={handleAddToCart}
-          disabled={!canAddToCart}
-          style={[styles.addButton, !canAddToCart && styles.addButtonDisabled]}>
-          <ThemedText type="smallBold" style={styles.addButtonText}>
-            {outOfStock ? 'Out of Stock' : added ? 'Added ✓' : 'Add to Cart'}
-          </ThemedText>
-        </Pressable>
-      </ThemedView>
+      {purchaseMode === 'wholesale' && groupInfo ? (
+        <ThemedView
+          type="backgroundElement"
+          style={[styles.stickyBar, { paddingBottom: Math.max(insets.bottom, Spacing.three) }]}>
+          <View>
+            <ThemedText type="small" themeColor="textSecondary">
+              Pack Total
+            </ThemedText>
+            <ThemedText type="smallBold" style={styles.totalPrice}>
+              ₹{selectedPackSize ? (selectedPackSize === 5 ? groupInfo.bulkPricing.pack5 : groupInfo.bulkPricing.pack10) * selectedPackSize : 0}
+            </ThemedText>
+          </View>
+          <Pressable
+            onPress={handleAddPackToCart}
+            disabled={!canAddPack}
+            style={[styles.addButton, !canAddPack && styles.addButtonDisabled]}>
+            <ThemedText type="smallBold" style={styles.addButtonText}>
+              {packAdded ? 'Added ✓' : 'Add Pack to Cart'}
+            </ThemedText>
+          </Pressable>
+        </ThemedView>
+      ) : (
+        <ThemedView
+          type="backgroundElement"
+          style={[styles.stickyBar, { paddingBottom: Math.max(insets.bottom, Spacing.three) }]}>
+          <View>
+            <ThemedText type="small" themeColor="textSecondary">
+              Total
+            </ThemedText>
+            <ThemedText type="smallBold" style={styles.totalPrice}>
+              ₹{totalPrice}
+            </ThemedText>
+          </View>
+          <Pressable
+            onPress={handleAddToCart}
+            disabled={!canAddToCart}
+            style={[styles.addButton, !canAddToCart && styles.addButtonDisabled]}>
+            <ThemedText type="smallBold" style={styles.addButtonText}>
+              {outOfStock ? 'Out of Stock' : added ? 'Added ✓' : 'Add to Cart'}
+            </ThemedText>
+          </Pressable>
+        </ThemedView>
+      )}
     </ThemedView>
+  );
+}
+
+function PackOptionCard({
+  label,
+  packSize,
+  pricePerUnit,
+  retailPrice,
+  selected,
+  onPress,
+}: {
+  label: string;
+  packSize: 5 | 10;
+  pricePerUnit: number;
+  retailPrice: number;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const discountPercent = retailPrice > 0 ? Math.round((1 - pricePerUnit / retailPrice) * 100) : 0;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.packOptionCard, selected && styles.packOptionCardSelected]}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}>
+      <ThemedText type="smallBold">{label}</ThemedText>
+      <ThemedText type="subtitle" style={styles.packOptionPrice}>
+        ₹{pricePerUnit}
+        <ThemedText type="small" themeColor="textSecondary">
+          /unit
+        </ThemedText>
+      </ThemedText>
+      <ThemedText type="small" themeColor="textSecondary" style={styles.packOptionRetail}>
+        Retail ₹{retailPrice}/unit
+      </ThemedText>
+      {discountPercent > 0 && (
+        <ThemedText type="small" style={styles.discountText}>
+          {discountPercent}% off
+        </ThemedText>
+      )}
+      <ThemedText type="small" themeColor="textSecondary">
+        Total for {packSize}: ₹{pricePerUnit * packSize}
+      </ThemedText>
+    </Pressable>
   );
 }
 
@@ -540,6 +821,104 @@ const styles = StyleSheet.create({
   swatchDotBorder: {
     borderWidth: 1,
     borderColor: 'rgba(128,128,128,0.35)',
+  },
+  modeToggleRow: {
+    marginTop: Spacing.three,
+    flexDirection: 'row',
+    borderRadius: Spacing.five,
+    padding: 3,
+    backgroundColor: 'rgba(128,128,128,0.12)',
+  },
+  modeTab: {
+    flex: 1,
+    borderRadius: Spacing.five,
+    paddingVertical: Spacing.two,
+    alignItems: 'center',
+  },
+  modeTabActive: {
+    backgroundColor: '#3c87f7',
+  },
+  modeTabText: {
+    color: '#6b7280',
+  },
+  modeTabTextActive: {
+    color: '#ffffff',
+  },
+  wholesaleSection: {
+    marginTop: Spacing.three,
+    gap: Spacing.three,
+  },
+  packOptionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  packOptionCard: {
+    flex: 1,
+    borderRadius: Spacing.three,
+    borderWidth: 2,
+    borderColor: 'rgba(128,128,128,0.25)',
+    padding: Spacing.three,
+    gap: 2,
+  },
+  packOptionCardSelected: {
+    borderColor: '#3c87f7',
+    backgroundColor: 'rgba(60,135,247,0.08)',
+  },
+  packOptionPrice: {
+    fontSize: 20,
+    marginTop: 2,
+  },
+  packOptionRetail: {
+    textDecorationLine: 'line-through',
+  },
+  packPicker: {
+    gap: Spacing.three,
+  },
+  packVariantBlock: {
+    borderRadius: Spacing.three,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
+    padding: Spacing.three,
+    gap: Spacing.two,
+  },
+  packVariantHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  packVariantDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  packSizeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: Spacing.four,
+  },
+  packStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    borderRadius: Spacing.five,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.3)',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.half,
+  },
+  packStepperButton: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  packStepperTextDisabled: {
+    opacity: 0.3,
+  },
+  packStepperValue: {
+    minWidth: 16,
+    textAlign: 'center',
   },
   descriptionBlock: {
     marginTop: Spacing.four,

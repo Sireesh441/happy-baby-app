@@ -9,7 +9,7 @@ import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useCart } from '@/context/cart-context';
 import { useTheme } from '@/hooks/use-theme';
-import { placeOrder, type ShippingAddress } from '@/lib/orders-api';
+import { placeOrder, type OrderItemInput, type ShippingAddress } from '@/lib/orders-api';
 
 type RazorpayMessage =
   | { type: 'success'; payload: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string } }
@@ -113,7 +113,9 @@ export default function RazorpayCheckoutScreen() {
       setIsFinishingUp(true);
       try {
         if (!token) throw new Error('You have been logged out. Please log in and try again.');
-        const items: { productId: number; quantity: number }[] = JSON.parse(decodeURIComponent(params.items));
+        // Encoded as JSON by checkout.tsx before navigating here -- may contain
+        // both retail ({ productId, quantity }) and bulk-pack entries.
+        const items: OrderItemInput[] = JSON.parse(decodeURIComponent(params.items));
         const shippingAddress: ShippingAddress = JSON.parse(decodeURIComponent(params.shippingAddress));
         const order = await placeOrder(token, {
           razorpay_order_id: message.payload.razorpay_order_id,

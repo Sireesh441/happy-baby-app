@@ -85,18 +85,36 @@ export default function OrderConfirmationScreen() {
           <ThemedText type="smallBold" style={styles.sectionTitle}>
             Items
           </ThemedText>
-          {order.items.map((item) => (
-            <ThemedView key={item.id} type="backgroundElement" style={styles.itemRow}>
-              <ThemedText style={styles.itemEmoji}>{item.emoji}</ThemedText>
-              <View style={styles.itemInfo}>
-                <ThemedText numberOfLines={1}>{item.name}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Qty: {item.quantity}
-                </ThemedText>
-              </View>
-              <ThemedText type="smallBold">₹{item.price * item.quantity}</ThemedText>
-            </ThemedView>
-          ))}
+          {order.items.map((item, index) =>
+            item.type === 'bulk' ? (
+              <ThemedView key={`bulk-${item.productGroupId}-${index}`} type="backgroundElement" style={styles.itemRow}>
+                <ThemedText style={styles.itemEmoji}>📦</ThemedText>
+                <View style={styles.itemInfo}>
+                  <ThemedText numberOfLines={1}>
+                    {item.productGroupName} — Bulk {item.packSize}-Pack
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
+                    {item.breakdownDisplay.map((entry) => `${entry.name}${entry.size ? ` (${entry.size})` : ''} ×${entry.quantity}`).join(', ')}
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {item.quantity} pack{item.quantity === 1 ? '' : 's'} · ₹{item.pricePerUnit}/unit
+                  </ThemedText>
+                </View>
+                <ThemedText type="smallBold">₹{item.pricePerUnit * item.packSize * item.quantity}</ThemedText>
+              </ThemedView>
+            ) : (
+              <ThemedView key={item.id} type="backgroundElement" style={styles.itemRow}>
+                <ThemedText style={styles.itemEmoji}>{item.emoji}</ThemedText>
+                <View style={styles.itemInfo}>
+                  <ThemedText numberOfLines={1}>{item.name}</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Qty: {item.quantity}
+                  </ThemedText>
+                </View>
+                <ThemedText type="smallBold">₹{item.price * item.quantity}</ThemedText>
+              </ThemedView>
+            )
+          )}
         </View>
 
         <View style={styles.section}>

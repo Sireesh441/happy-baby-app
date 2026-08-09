@@ -14,7 +14,7 @@ import { useAuth } from '@/context/auth-context';
 import { useCart } from '@/context/cart-context';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchProductById } from '@/lib/api';
-import { fetchOrders, type Order, type OrderItem } from '@/lib/orders-api';
+import { fetchOrders, type BulkOrderItem, type Order, type RetailOrderItem } from '@/lib/orders-api';
 import {
   createReturnCase,
   fetchReturnCases,
@@ -38,7 +38,7 @@ export default function OrderHistoryScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { user, token, isLoading: isAuthLoading } = useAuth();
-  const { addItem } = useCart();
+  const { addItem, addBulkPack } = useCart();
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -110,6 +110,22 @@ export default function OrderHistoryScreen() {
       const unavailable: string[] = [];
 
       for (const item of order.items) {
+        if (item.type === 'bulk') {
+          // Re-add using this order's own snapshotted breakdown/price for
+          // immediate display -- the real charge gets re-resolved from the
+          // ProductGroup's *current* bulkPricing at checkout regardless
+          // (same as every bulk pack), so a possibly-stale display price
+          // here is just a preview, not what actually gets charged.
+          addBulkPack({
+            productGroupId: item.productGroupId,
+            productGroupName: item.productGroupName,
+            packSize: item.packSize as 5 | 10,
+            pricePerUnit: item.pricePerUnit,
+            breakdownDisplay: item.breakdownDisplay,
+          });
+          continue;
+        }
+
         const product = await fetchProductById(item.id).catch(() => null);
         if (product) {
           addItem(product, item.quantity);
@@ -131,7 +147,7 @@ export default function OrderHistoryScreen() {
     }
   }
 
-  async function handleReturnItem(order: Order, item: OrderItem) {
+  async function handleReturnItem(order: Order, item: RetailOrderItem) {
     if (!token) return;
     const key = `${order.id}-${item.id}`;
     setPendingItemKey(key);
@@ -282,7 +298,7 @@ function OrderCard({
   returnCases: ReturnCase[];
   pendingItemKey: string | null;
   itemErrors: Record<string, string>;
-  onReturnItem: (item: OrderItem) => void;
+  onReturnItem: (item: RetailOrderItem) => void;
   onRetryUploadProof: (returnCase: ReturnCase) => void;
 }) {
   const placedOn = new Date(order.createdAt).toLocaleDateString(undefined, {
@@ -290,7 +306,10 @@ function OrderCard({
     month: 'short',
     day: 'numeric',
   });
-  const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
+  const itemCount = order.items.reduce(
+    (sum, item) => sum + (item.type === 'bulk' ? item.packSize * item.quantity : item.quantity),
+    0
+  );
 
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
@@ -305,7 +324,14 @@ function OrderCard({
       </View>
 
       <View style={styles.itemList}>
-        {order.items.map((item) => {
+        {order.items.map((item, index) => {
+          if (item.type === 'bulk') {
+            // Bulk packs aren't returnable through this flow yet --
+            // returns-protection's model is per-retail-item-id and has no
+            // concept of a wholesale pack. Shown for visibility only.
+            return <BulkItemRow key={`bulk-${item.productGroupId}-${index}`} item={item} />;
+          }
+
           const key = `${order.id}-${item.id}`;
           const returnCase = returnCases.find((c) => c.itemId === item.id);
           const isPending = pendingItemKey === key;
@@ -363,6 +389,28 @@ function OrderCard({
         </ThemedText>
       </Pressable>
     </ThemedView>
+  );
+}
+
+function BulkItemRow({ item }: { item: BulkOrderItem }) {
+  const summary = item.breakdownDisplay
+    .map((entry) => `${entry.name}${entry.size ? ` (${entry.size})` : ''} ×${entry.quantity}`)
+    .join(', ');
+
+  return (
+    <View style={styles.itemRow}>
+      <View style={styles.bulkItemThumb}>
+        <ThemedText style={styles.bulkItemEmoji}>📦</ThemedText>
+      </View>
+      <View style={styles.itemInfo}>
+        <ThemedText type="small" numberOfLines={1}>
+          {item.productGroupName} — Bulk {item.packSize}-Pack
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
+          {summary}
+        </ThemedText>
+      </View>
+    </View>
   );
 }
 
@@ -463,6 +511,17 @@ const styles = StyleSheet.create({
   itemInfo: {
     flex: 1,
     gap: 2,
+  },
+  bulkItemThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: Spacing.two,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(79,70,229,0.12)',
+  },
+  bulkItemEmoji: {
+    fontSize: 20,
   },
   returnStatusRow: {
     flexDirection: 'row',
