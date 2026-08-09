@@ -28,7 +28,9 @@ export default function LoginScreen() {
       if (redirectTo) {
         router.replace(redirectTo as Href);
       } else {
-        router.back();
+        // router.back() silently no-ops when there's no prior screen in history
+        // (e.g. landing on /login directly) -- fall back to a route that always exists.
+        router.replace('/');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');

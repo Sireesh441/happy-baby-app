@@ -24,6 +24,30 @@ export type Product = {
   // import on the backend -- manually added products won't have these.
   sizes?: SizeEntry[];
   inStock?: boolean;
+  // Variant grouping (Amazon-style color swatches under one listing).
+  // Undefined for products that aren't part of a group.
+  productGroupId?: number;
+  // The product's actual color (e.g. "Blue Stripes") -- distinct from
+  // `color` above, which is a card-theming class, not a real attribute.
+  variantColor?: string;
+};
+
+// Only present on entries returned by GET /api/products (the shop-grid
+// listing), which now collapses each ProductGroup down to one representative
+// variant. Absent on a single product fetched via GET /api/products/:id.
+export type ProductListItem = Product & { variantCount: number };
+
+export type ProductGroup = {
+  id: number;
+  name: string;
+  vertical: ProductVertical;
+  category: string;
+  description?: string;
+};
+
+export type ProductGroupDetail = {
+  group: ProductGroup;
+  variants: Product[];
 };
 
 export type FetchProductsParams = {
@@ -36,9 +60,11 @@ export type FetchProductsParams = {
 /**
  * The backend only filters server-side by `vertical`; `search` and `category`
  * are accepted but currently ignored, so we also apply them client-side to
- * keep this function correct regardless of backend behavior.
+ * keep this function correct regardless of backend behavior. Returns one
+ * entry per ProductGroup (a representative variant + `variantCount`) plus
+ * one entry per ungrouped product -- not one row per color.
  */
-export async function fetchProducts(params: FetchProductsParams = {}): Promise<Product[]> {
+export async function fetchProducts(params: FetchProductsParams = {}): Promise<ProductListItem[]> {
   const query = new URLSearchParams();
   if (params.vertical) query.set('vertical', params.vertical);
   if (params.category) query.set('category', params.category);
@@ -51,7 +77,7 @@ export async function fetchProducts(params: FetchProductsParams = {}): Promise<P
     throw new Error(`Failed to fetch products (${response.status})`);
   }
 
-  const products: Product[] = await response.json();
+  const products: ProductListItem[] = await response.json();
   return products.filter((product) => matchesFilters(product, params));
 }
 
@@ -74,6 +100,18 @@ export async function fetchProductById(id: number): Promise<Product | null> {
   if (response.status === 404) return null;
   if (!response.ok) {
     throw new Error(`Failed to fetch product (${response.status})`);
+  }
+
+  return response.json();
+}
+
+/** All color variants within a ProductGroup, for a product-detail page's swatch picker. */
+export async function fetchProductGroup(groupId: number): Promise<ProductGroupDetail | null> {
+  const response = await fetch(`${PRODUCTS_ENDPOINT}/group/${groupId}`);
+
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`Failed to fetch product group (${response.status})`);
   }
 
   return response.json();

@@ -8,7 +8,7 @@ import { ProductCardSkeleton } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { fetchProducts, type Product, type ProductVertical } from '@/lib/api';
+import { fetchProducts, type ProductListItem, type ProductVertical } from '@/lib/api';
 
 const SKELETON_COUNT = 6;
 
@@ -36,7 +36,7 @@ export default function ShopScreen() {
   const vertical = rawVertical && isProductVertical(rawVertical) ? rawVertical : undefined;
   const title = vertical ? VERTICAL_LABELS[vertical] : 'Shop';
 
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<ProductListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORY);

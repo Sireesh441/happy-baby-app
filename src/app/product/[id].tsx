@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -15,7 +15,8 @@ import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useCart } from '@/context/cart-context';
 import { useWishlist } from '@/context/wishlist-context';
-import { fetchProductById, fetchProducts, getProductImageUrl, type Product } from '@/lib/api';
+import { fetchProductById, fetchProductGroup, fetchProducts, getProductImageUrl, type Product } from '@/lib/api';
+import { colorNameToHex, swatchNeedsBorder } from '@/lib/color-swatch';
 
 const ADDED_FEEDBACK_DURATION_MS = 1500;
 const MAX_RELATED_PRODUCTS = 4;
@@ -31,7 +32,17 @@ export default function ProductDetailScreen() {
 
   const productId = rawId ? Number(rawId) : NaN;
 
+  // `product` is whatever was loaded for the routed :id -- stays stable
+  // across a color swap so "related products" doesn't refetch/flicker every
+  // time a swatch is tapped. `variants` holds every color in the same
+  // ProductGroup (just `[product]` when it isn't grouped), and
+  // `selectedVariantId` + `activeProduct` (below) track which one is
+  // currently on screen. Tapping a swatch only ever touches
+  // `selectedVariantId` -- no navigation, no refetch of `product` itself,
+  // matching the "switch in place like Amazon" requirement.
   const [product, setProduct] = useState<Product | null>(null);
+  const [variants, setVariants] = useState<Product[]>([]);
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
@@ -39,6 +50,11 @@ export default function ProductDetailScreen() {
   const [added, setAdded] = useState(false);
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
   const [retryKey, setRetryKey] = useState(0);
+
+  const activeProduct = useMemo(
+    () => variants.find((variant) => variant.id === selectedVariantId) ?? product,
+    [variants, selectedVariantId, product]
+  );
 
   useEffect(() => {
     if (!Number.isFinite(productId)) {
@@ -50,21 +66,34 @@ export default function ProductDetailScreen() {
     setIsLoading(true);
     setHasError(false);
     setProduct(null);
+    setVariants([]);
+    setSelectedVariantId(null);
     setQuantity(1);
     setAdded(false);
 
-    fetchProductById(productId)
-      .then((result) => {
+    (async () => {
+      try {
+        const result = await fetchProductById(productId);
         if (cancelled) return;
         setProduct(result);
-        setSelectedSize(result?.sizes?.find((entry) => entry.available)?.size);
-      })
-      .catch(() => {
+        if (!result) return;
+
+        setSelectedVariantId(result.id);
+        setSelectedSize(result.sizes?.find((entry) => entry.available)?.size);
+
+        if (result.productGroupId != null) {
+          const group = await fetchProductGroup(result.productGroupId);
+          if (cancelled) return;
+          setVariants(group?.variants && group.variants.length > 0 ? group.variants : [result]);
+        } else {
+          setVariants([result]);
+        }
+      } catch {
         if (!cancelled) setHasError(true);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setIsLoading(false);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -78,10 +107,14 @@ export default function ProductDetailScreen() {
     }
 
     let cancelled = false;
+    const variantIds = new Set(variants.map((variant) => variant.id));
     fetchProducts({ vertical: product.vertical, category: product.category })
       .then((results) => {
         if (cancelled) return;
-        setRelatedProducts(results.filter((item) => item.id !== product.id).slice(0, MAX_RELATED_PRODUCTS));
+        // Exclude every color variant in this group, not just the currently
+        // active one -- they're already reachable via the swatches above,
+        // so listing them again under "You might also like" is redundant.
+        setRelatedProducts(results.filter((item) => !variantIds.has(item.id)).slice(0, MAX_RELATED_PRODUCTS));
       })
       .catch(() => {
         // Related products are supplementary; fail silently and just show none.
@@ -90,21 +123,32 @@ export default function ProductDetailScreen() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately keyed on `product` (not `activeProduct`/`variants`) so switching colors doesn't refetch this section.
   }, [product]);
 
+  function handleSelectVariant(variant: Product) {
+    if (variant.id === selectedVariantId) return;
+    setSelectedVariantId(variant.id);
+    setSelectedSize(variant.sizes?.find((entry) => entry.available)?.size);
+    setAdded(false);
+  }
+
   function handleAddToCart() {
-    if (!product || !canAddToCart) return;
-    addItem(product, quantity);
+    if (!activeProduct || !canAddToCart) return;
+    // Whichever variant is currently selected -- addItem keys the cart line
+    // by this exact product id, so cart/checkout reflect the color actually
+    // chosen, even though the URL never changed.
+    addItem(activeProduct, quantity);
     setAdded(true);
     setTimeout(() => setAdded(false), ADDED_FEEDBACK_DURATION_MS);
   }
 
   function handleTryItOn() {
-    if (!product) return;
+    if (!activeProduct) return;
     if (user) {
-      router.push({ pathname: '/try-on/[id]', params: { id: String(product.id) } });
+      router.push({ pathname: '/try-on/[id]', params: { id: String(activeProduct.id) } });
     } else {
-      router.push({ pathname: '/login', params: { redirectTo: `/try-on/${product.id}` } });
+      router.push({ pathname: '/login', params: { redirectTo: `/try-on/${activeProduct.id}` } });
     }
   }
 
@@ -136,7 +180,7 @@ export default function ProductDetailScreen() {
     );
   }
 
-  if (!product) {
+  if (!product || !activeProduct) {
     return (
       <ThemedView style={styles.statusContainer}>
         <Stack.Screen options={{ title: '' }} />
@@ -145,17 +189,21 @@ export default function ProductDetailScreen() {
     );
   }
 
-  const discountPercent = product.originalPrice
-    ? Math.round((1 - product.price / product.originalPrice) * 100)
+  // Everything below renders `activeProduct` -- the currently selected color
+  // variant -- not `product` (the originally routed :id). They're the same
+  // object until a swatch is tapped.
+  const discountPercent = activeProduct.originalPrice
+    ? Math.round((1 - activeProduct.price / activeProduct.originalPrice) * 100)
     : undefined;
-  const filledStars = Math.round(product.rating);
-  const imageUrl = getProductImageUrl(product);
-  const totalPrice = product.price * quantity;
+  const filledStars = Math.round(activeProduct.rating);
+  const imageUrl = getProductImageUrl(activeProduct);
+  const totalPrice = activeProduct.price * quantity;
 
-  const sizes = product.sizes ?? [];
+  const sizes = activeProduct.sizes ?? [];
   const hasSizes = sizes.length > 0;
-  const outOfStock = product.inStock === false;
+  const outOfStock = activeProduct.inStock === false;
   const canAddToCart = !outOfStock && (!hasSizes || Boolean(selectedSize));
+  const hasColorVariants = variants.length > 1;
 
   return (
     <ThemedView style={styles.container}>
@@ -163,35 +211,41 @@ export default function ProductDetailScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.carouselWrapper}>
-          <ProductImageCarousel images={imageUrl ? [imageUrl] : []} emoji={product.emoji} color={product.color} />
-          {product.tag && (
+          <ProductImageCarousel
+            images={imageUrl ? [imageUrl] : []}
+            emoji={activeProduct.emoji}
+            color={activeProduct.color}
+          />
+          {activeProduct.tag && (
             <View style={styles.tagBadge}>
               <ThemedText type="small" style={styles.tagText}>
-                {product.tag}
+                {activeProduct.tag}
               </ThemedText>
             </View>
           )}
           <Pressable
-            onPress={() => toggleWishlist(product)}
+            onPress={() => toggleWishlist(activeProduct)}
             hitSlop={8}
             style={styles.wishlistButton}
             accessibilityRole="button"
             accessibilityLabel={
-              isWishlisted(product.id) ? `Remove ${product.name} from wishlist` : `Save ${product.name} to wishlist`
+              isWishlisted(activeProduct.id)
+                ? `Remove ${activeProduct.name} from wishlist`
+                : `Save ${activeProduct.name} to wishlist`
             }>
             <Ionicons
-              name={isWishlisted(product.id) ? 'heart' : 'heart-outline'}
+              name={isWishlisted(activeProduct.id) ? 'heart' : 'heart-outline'}
               size={22}
-              color={isWishlisted(product.id) ? '#dc2626' : '#333333'}
+              color={isWishlisted(activeProduct.id) ? '#dc2626' : '#333333'}
             />
           </Pressable>
         </View>
 
         <View style={styles.content}>
           <ThemedText type="small" themeColor="textSecondary" style={styles.category}>
-            {product.category.toUpperCase()}
+            {activeProduct.category.toUpperCase()}
           </ThemedText>
-          <ThemedText type="subtitle">{product.name}</ThemedText>
+          <ThemedText type="subtitle">{activeProduct.name}</ThemedText>
 
           <View style={styles.ratingRow}>
             <ThemedText style={styles.stars}>
@@ -199,17 +253,49 @@ export default function ProductDetailScreen() {
               {'☆'.repeat(5 - filledStars)}
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              {product.rating.toFixed(1)} ({product.reviewCount.toLocaleString()} reviews)
+              {activeProduct.rating.toFixed(1)} ({activeProduct.reviewCount.toLocaleString()} reviews)
             </ThemedText>
           </View>
 
+          {hasColorVariants && (
+            <View style={styles.colorSection}>
+              <ThemedText type="smallBold">
+                Color{activeProduct.variantColor ? `: ${activeProduct.variantColor}` : ''}
+              </ThemedText>
+              <View style={styles.swatchPickerRow}>
+                {variants.map((variant) => {
+                  const isSelected = variant.id === activeProduct.id;
+                  const hex = colorNameToHex(variant.variantColor);
+                  return (
+                    <Pressable
+                      key={variant.id}
+                      onPress={() => handleSelectVariant(variant)}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
+                      accessibilityLabel={variant.variantColor ?? `Color option ${variant.id}`}
+                      style={[styles.swatchPickerButton, isSelected && styles.swatchPickerButtonSelected]}>
+                      <View
+                        style={[
+                          styles.swatchPickerDot,
+                          { backgroundColor: hex },
+                          swatchNeedsBorder(hex) && styles.swatchDotBorder,
+                        ]}
+                      />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
           <View style={styles.priceRow}>
             <ThemedText type="title" style={styles.price}>
-              ₹{product.price}
+              ₹{activeProduct.price}
             </ThemedText>
-            {product.originalPrice && (
+            {activeProduct.originalPrice && (
               <ThemedText themeColor="textSecondary" style={styles.strikethrough}>
-                ₹{product.originalPrice}
+                ₹{activeProduct.originalPrice}
               </ThemedText>
             )}
             {discountPercent !== undefined && discountPercent > 0 && (
@@ -222,7 +308,7 @@ export default function ProductDetailScreen() {
           <View style={styles.descriptionBlock}>
             <ThemedText type="smallBold">About this product</ThemedText>
             <ThemedText themeColor="textSecondary" style={styles.description}>
-              {product.description}
+              {activeProduct.description}
             </ThemedText>
           </View>
 
@@ -268,7 +354,7 @@ export default function ProductDetailScreen() {
             </View>
           )}
 
-          {product.category === 'Clothing' && <FitConfidence vertical={product.vertical} />}
+          {activeProduct.category === 'Clothing' && <FitConfidence vertical={activeProduct.vertical} />}
 
           <View style={styles.qtyRow}>
             <ThemedText type="smallBold">Quantity</ThemedText>
@@ -297,7 +383,7 @@ export default function ProductDetailScreen() {
             </View>
           </View>
 
-          {product.category === 'Clothing' && (
+          {activeProduct.category === 'Clothing' && (
             <Pressable onPress={handleTryItOn} style={styles.tryOnButton}>
               <ThemedText type="smallBold" style={styles.tryOnButtonText}>
                 👗 Try It On
@@ -424,6 +510,36 @@ const styles = StyleSheet.create({
   },
   discountText: {
     color: '#16a34a',
+  },
+  colorSection: {
+    marginTop: Spacing.three,
+    gap: Spacing.two,
+  },
+  swatchPickerRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  swatchPickerButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swatchPickerButtonSelected: {
+    borderColor: '#3c87f7',
+  },
+  swatchPickerDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+  },
+  swatchDotBorder: {
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.35)',
   },
   descriptionBlock: {
     marginTop: Spacing.four,

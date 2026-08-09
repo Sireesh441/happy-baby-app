@@ -10,7 +10,8 @@ import { useAuth } from '@/context/auth-context';
 import { useCart } from '@/context/cart-context';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchAddresses, createAddress as createAddressRequest, type Address } from '@/lib/addresses-api';
-import { createRazorpayOrder } from '@/lib/orders-api';
+import { createRazorpayOrder, placeOrder } from '@/lib/orders-api';
+import { openRazorpayWebCheckout, RazorpayDismissedError } from '@/lib/razorpay-web';
 
 const SHIPPING_FEE = 49;
 const FREE_SHIPPING_THRESHOLD = 999;
@@ -32,7 +33,7 @@ export default function CheckoutScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { user, token, isLoading: isAuthLoading } = useAuth();
-  const { lines, itemCount, subtotal, isLoaded: isCartLoaded } = useCart();
+  const { lines, itemCount, subtotal, isLoaded: isCartLoaded, clearCart } = useCart();
   const { paymentError } = useLocalSearchParams<{ paymentError?: string }>();
 
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -128,6 +129,32 @@ export default function CheckoutScreen() {
       const razorpayOrder = await createRazorpayOrder(token, total);
       const items = lines.map((line) => ({ productId: line.productId, quantity: line.quantity }));
 
+      // Native keeps the WebView-based flow (Razorpay's RN SDK doesn't support
+      // the New Architecture setup this app uses). Web has no react-native-webview
+      // implementation at all, so it loads Razorpay's Checkout.js directly instead
+      // and completes the order on this same screen rather than a separate route.
+      if (Platform.OS === 'web') {
+        const response = await openRazorpayWebCheckout({
+          keyId: razorpayOrder.keyId,
+          amount: razorpayOrder.amount,
+          currency: razorpayOrder.currency,
+          orderId: razorpayOrder.orderId,
+          name: user.name,
+          email: user.email,
+          contact: shippingAddress.phone,
+        });
+        const order = await placeOrder(token, {
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_signature: response.razorpay_signature,
+          items,
+          shippingAddress,
+        });
+        clearCart();
+        router.replace({ pathname: '/order-confirmation', params: { orderId: String(order.id) } } as Href);
+        return;
+      }
+
       router.push({
         pathname: '/razorpay-checkout',
         params: {
@@ -143,7 +170,9 @@ export default function CheckoutScreen() {
         },
       } as Href);
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      if (!(err instanceof RazorpayDismissedError)) {
+        setErrorMessage(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      }
     } finally {
       setIsPlacingOrder(false);
     }

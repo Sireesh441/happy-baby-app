@@ -7,11 +7,11 @@ Happy Baby is a multi-vertical e-commerce platform (Kids/Men/Women, branded
 one backend, plus three standalone microservices being built to eventually
 sell as independent B2B products. This same file is kept in sync across all
 five repos so any session has the full picture regardless of which repo it
-starts in. Last updated 2026-08-02.
+starts in. Last updated 2026-08-09.
 
 **You are here:** `happy-baby-app` (the real, inner copy — see the trap
-warning right below) — the Expo React Native mobile app. See its detailed
-section further down.
+warning right below) — the Expo React Native app, which also builds and runs
+on web via Expo's web target. See its detailed section further down.
 
 All five repos live as sibling folders under
 `C:\Users\SireeshGadde\OneDrive - RiskSpan\Desktop\`.
@@ -26,8 +26,8 @@ repos**:
   untracked, unused `src/` from the default scaffold. It is not where the
   real app lives.
 - **This repo** — `happy-baby-app\happy-baby-app\` — is the actual app: all
-  screens, the working checkout flow, try-on, etc., with its own `.git` and
-  real commit history.
+  screens, the working checkout flow (native + web), try-on, family fit
+  profiles, returns, etc., with its own `.git` and real commit history.
 
 Always work from **this inner directory**. The outer copy appears to be
 leftover from however the project was first scaffolded and hasn't been
@@ -64,9 +64,9 @@ scaffold itself was abandoned.
 | # | Repo | Role | Status |
 |---|------|------|--------|
 | 1 | `happy-baby` | Next.js web app + core backend (Vercel, production) | Live, most mature |
-| 2 | `happy-baby-app` (inner copy) | Expo React Native mobile app (SDK 54) | Built through checkout, untested on device |
-| 3 | `happy-baby-fit-engine` | Standalone Express/TS API — Family Fit Profiles + Fit Confidence Score | Fully implemented (full CRUD + scoring, incl. age-based estimation for kids), uncommitted |
-| 4 | `happy-baby-returns-protection` | Standalone Express/TS API — tamper-evident return proof | Fully implemented, verified live end-to-end, not deployed |
+| 2 | `happy-baby-app` (inner copy) | Expo app (SDK 54) — native (iOS/Android) + web | Verified end-to-end on both native and web, incl. full checkout/payment/order flow |
+| 3 | `happy-baby-fit-engine` | Standalone Express/TS API — Family Fit Profiles + Fit Confidence Score | Fully implemented, deployed live on Railway, wired into this app and verified end-to-end |
+| 4 | `happy-baby-returns-protection` | Standalone Express/TS API — tamper-evident return proof | Fully implemented, deployed live on Railway, wired into this app and verified end-to-end |
 | 5 | `happy-baby-tryon-service` | Standalone Express/TS API — provider-agnostic try-on wrapper | Fully implemented, pushed to GitHub, not deployed, not yet wired into the app |
 
 ## Key product strategy — "Fit Certain"
@@ -81,23 +81,36 @@ other e-commerce brands once proven inside Happy Baby.
 
 ## Cross-repo integration facts
 
-- All three new microservices (fit-engine, returns-protection, tryon-service)
-  are meant to be called *by* `happy-baby` (web) and this app eventually.
-  **None of the three are wired into this app yet.**
+- fit-engine and returns-protection are now both live (Railway) and wired
+  directly into this app — this app's client code calls their production
+  URLs as hardcoded constants (not env vars), the same pattern in both:
+  `FIT_ENGINE_URL` in `src/lib/fit-engine-api.ts` →
+  `https://happy-baby-fit-engine-production.up.railway.app`, and
+  `RETURNS_SERVICE_URL` in `src/lib/returns-api.ts` →
+  `https://happy-baby-returns-protection-production.up.railway.app`. Both are
+  hardcoded **deliberately**, to avoid a localhost-fallback bug that once
+  existed in this app's `TRYON_SERVICE_URL`-equivalent server-side pattern.
+- tryon-service is still not wired in — see below.
 - fit-engine and returns-protection share one Supabase Postgres database
   with the main backend (`happy-baby`); table-prefix + Postgres-schema
   isolation, not relevant to this app directly.
 - Auth: this app's login (`/api/mobile-auth/login` on `happy-baby`) issues a
   Bearer JWT with payload `{ sub, name, email }` — **no `isAdmin` claim**.
   fit-engine and returns-protection both verify that same token (same
-  `JWT_SECRET`), so once this app has a token from login, it's already
-  usable against those services too, should they get wired in.
-- **Try-on currently has two independent implementations:**
+  `JWT_SECRET`), so once this app has a token from login, it's usable
+  against those services too. Verified live: family profile creation
+  (`POST /api/family-profiles`) and fit scoring (`/api/fit-score`, showing
+  "100% match" on a real product page), plus return-case creation and
+  unboxing-proof upload against returns-protection.
+- **Try-on still has two independent implementations, and this app still
+  calls the old one:**
   - `happy-baby` (web)'s own `/api/try-on` route (originally fal.ai, now a
     free Hugging Face Space). **This is what this app actually calls
-    today** (see `src/lib/try-on-api.ts` / `src/app/try-on/[id].tsx`).
-  - `happy-baby-tryon-service` is a new standalone, provider-agnostic
-    replacement built separately, not yet wired into this app. Migrating
+    today** (see `src/lib/try-on-api.ts`, which hits
+    `${BACKEND_URL}/api/try-on`, and `src/app/try-on/[id].tsx`). Unchanged
+    since 2026-08-02.
+  - `happy-baby-tryon-service` is a standalone, provider-agnostic
+    replacement built separately, still not wired into this app. Migrating
     this app's try-on calls over to it is still open work.
 
 ## Known technical decisions/gotchas (apply project-wide)
@@ -112,8 +125,24 @@ other e-commerce brands once proven inside Happy Baby.
   `ECONNREFUSED` crash on Vercel (not relevant to this app directly, but
   explains backend behavior this app depends on).
 - **Razorpay's React Native SDK doesn't support this app's New Architecture
-  setup** — checkout uses a WebView loading Razorpay's Standard Checkout
-  instead (`src/app/razorpay-checkout.tsx`), not the native SDK.
+  setup** — native checkout uses a WebView loading Razorpay's Standard
+  Checkout instead (`src/app/razorpay-checkout.tsx`), not the native SDK.
+- **`react-native-webview` has no web implementation at all** — it doesn't
+  just degrade, it hard-fails the web build ("React Native WebView does not
+  support this platform"). This blocked all purchases on web until fixed
+  2026-08-09 (see this repo's detail section below): `checkout.tsx` now
+  branches on `Platform.OS`, keeping the WebView flow for native untouched
+  and loading Razorpay's `checkout.js` script directly on web via
+  `src/lib/razorpay-web.ts`. Any other native-only package considered for
+  this app should be checked for a web implementation up front rather than
+  discovered at build time.
+- **`router.back()` silently no-ops when there's no prior navigation
+  history** (e.g. a user landing directly on a deep link like `/login`) —
+  it doesn't throw or redirect, it just does nothing, which looks like a
+  hang/bug from the user's side even though the underlying action (e.g.
+  login) succeeded. Prefer `router.replace('/')` (or another route that
+  always exists) over `router.back()` for any "return to a sensible
+  default" fallback.
 
 ---
 
@@ -121,56 +150,116 @@ other e-commerce brands once proven inside Happy Baby.
 
 ### 1. happy-baby (web + core backend)
 
-Next.js, deployed live on Vercel. Postgres via Supabase + Prisma. NextAuth
-for web sessions, custom JWT endpoints (`/api/mobile-auth/login`, `/signup`,
-`/me`) for this app. Razorpay payments. Anthropic-powered "Ask Happy Baby"
-assistant. API routes: `addresses`, `assistant`, `auth/[...nextauth]`,
-`cart`, `cart/[productId]`, `mobile-auth/login`, `mobile-auth/me`,
-`mobile-auth/signup`, `orders`, `orders/[id]`, `products`, `products/[id]`,
-`razorpay/create-order`, `signup`, `try-on`.
+Next.js, deployed live on Vercel (`https://happy-baby-seven.vercel.app`).
+Postgres via Supabase + Prisma. NextAuth for web sessions, custom JWT
+endpoints (`/api/mobile-auth/login`, `/signup`, `/me`) for this app.
+Razorpay payments. Anthropic-powered "Ask Happy Baby" assistant. API routes:
+`addresses`, `assistant`, `auth/[...nextauth]`, `cart`, `cart/[productId]`,
+`mobile-auth/login`, `mobile-auth/me`, `mobile-auth/signup`, `orders`,
+`orders/[id]`, `products`, `products/[id]`, `razorpay/create-order`,
+`signup`, `try-on`.
 
 ### 2. happy-baby-app (this repo)
 
-Expo SDK 54. Commit history: `Initial commit` → `Day 12: Product detail
-screen with sticky Add to Cart bar and related products` → `Day 13
-complete: cart, product detail, shop screen - verified on native device` →
-`Day 14: Mobile auth verified on device` → `Add virtual try-on feature for
-clothing products` → `Build out checkout: shipping address, order summary,
-Razorpay payment, confirmation` (HEAD).
+Expo SDK 54 (`~54.0.36`), targeting native (iOS/Android) and web from one
+codebase. Commit history (oldest → newest): `Initial commit` → `Day 12:
+Product detail screen with sticky Add to Cart bar and related products` →
+`Day 13 complete: cart, product detail, shop screen - verified on native
+device` → `Day 14: Mobile auth verified on device` → `Add virtual try-on
+feature for clothing products` → `Build out checkout: shipping address,
+order summary, Razorpay payment, confirmation` → `Day 19: Mobile size
+selector, low-stock, out-of-stock UI - verified against production` →
+`Day 20a: Polish pass - skeletons, empty states, error states with retry,
+fixed cart/wishlist isLoaded bug` → `Set up EAS build tooling` → `Add Family
+Fit Profiles: family member CRUD + Fit Confidence on product pages` → `Add
+return flow to Order History: create case + unboxing proof upload` (HEAD).
+Two more fixes landed on top of HEAD earlier today (2026-08-09), not yet
+committed as of this writing — see below.
 
 Screens (`src/app/`): tabs home (`(tabs)/index.tsx`), shop by vertical
 (`shop/[vertical].tsx`), product detail (`product/[id].tsx`), cart tab,
-account tab, login/signup, checkout, razorpay-checkout (WebView),
-order-confirmation, try-on (`try-on/[id].tsx`).
+account tab, wishlist, login/signup, checkout, razorpay-checkout
+(WebView, native only), order-confirmation, order-history, family-members,
+try-on (`try-on/[id].tsx`), assistant.
 
-**Checkout was just built and is unverified on a real device** — that's the
-immediate next step. Try-on is live with a known accepted bug: garment type
-sometimes misclassified (e.g. jeans rendered as a shirt).
+Client libs (`src/lib/`): `api.ts` (`BACKEND_URL` +
+products), `auth-api.ts`, `addresses-api.ts`, `orders-api.ts`,
+`try-on-api.ts`, `fit-engine-api.ts`, `returns-api.ts`, `razorpay-web.ts`
+(new 2026-08-09), `assistant-api.ts`, `save-image.ts`, `token-storage.ts`.
+
+**Two fixes made and verified live today (2026-08-09):**
+
+1. **Checkout now works on both native and web.** `checkout.tsx` used to
+   route unconditionally to `razorpay-checkout.tsx` (WebView-based), and
+   `react-native-webview` has no web implementation, so the web build
+   hard-failed and purchases were completely blocked on web. Fixed by
+   branching on `Platform.OS` in `handlePlaceOrder()`: native is unchanged
+   (still pushes to `/razorpay-checkout`); web instead calls the new
+   `openRazorpayWebCheckout()` from `src/lib/razorpay-web.ts`, which loads
+   Razorpay's `checkout.js` script directly and, on success, calls the same
+   `placeOrder()` from `orders-api.ts` that native uses, so both platforms
+   create orders through an identical backend contract. `razorpay-web.ts`
+   also exports `RazorpayDismissedError`, thrown when the user closes the
+   modal without paying, and swallowed (not shown as an error) in
+   `checkout.tsx`'s catch block. Verified with a real completed Razorpay
+   test-mode payment on web, producing a real order visible in Order
+   History and Order Confirmation.
+2. **Login redirect fixed.** `login.tsx`'s success handler used to fall
+   back to `router.back()` when there was no `redirectTo` param, which
+   silently no-ops with no prior navigation history — leaving a user who
+   landed directly on `/login` stuck on the login screen despite a
+   successful login (token stored correctly, just no visible navigation).
+   Changed the fallback to `router.replace('/')`. Verified live: logging in
+   from a fresh browser tab with zero navigation history now lands on Home.
+
+**Also verified live end-to-end today** (full walkthrough against
+production backends): signup/login against `happy-baby`
+(`https://happy-baby-seven.vercel.app`); family fit profile creation via
+fit-engine (`POST /api/family-profiles`) with fit confidence showing "100%
+match" via `/api/fit-score` on a product page; add-to-cart, which is
+**local-only** (AsyncStorage via `src/context/cart-context.tsx`, key
+`happybaby.cart.v1`) — by design, not a backend call; full checkout +
+payment + order confirmation on both the native WebView path and the new
+web path; Order History correctly showing return status ("Proof Pending" /
+"Proof uploaded ✓", from `STATUS_LABELS` in `order-history.tsx` sourced from
+returns-protection); initiating a return and uploading unboxing proof via
+`returns-api.ts` directly against returns-protection on Railway.
+
+Try-on is live with a known accepted bug: garment type sometimes
+misclassified (e.g. jeans rendered as a shirt). Still calls `happy-baby`'s
+own `/api/try-on`, not `happy-baby-tryon-service` — unchanged since
+2026-08-02.
 
 ### 3. happy-baby-fit-engine
 
 Express + TypeScript. Owns Family Fit Profiles and Fit Confidence Score.
-Fully implemented and verified live: full CRUD on `/api/family-profiles`
-(create/list/update/delete, ownership-scoped), and `/api/fit-score`
-(per-dimension match scoring against a caller-supplied size chart, with
-age-based estimation for children when real measurements aren't available).
-Not yet wired into this app. Uncommitted as of 2026-08-02.
+Fully implemented, **deployed live on Railway**
+(`https://happy-baby-fit-engine-production.up.railway.app`), and **wired
+into this app** (`src/lib/fit-engine-api.ts`): full CRUD on
+`/api/family-profiles` (create/list/update/delete, ownership-scoped), and
+`/api/fit-score` (per-dimension match scoring against a caller-supplied size
+chart, with age-based estimation for children when real measurements aren't
+available). Verified live end-to-end from this app today.
 
 ### 4. happy-baby-returns-protection
 
 Express + TypeScript. Handles tamper-evident return proof (packing +
-unboxing photo/video, server-timestamped, immutable). Fully implemented and
-verified live end-to-end: case creation, proof upload with role separation
-(packing=admin, unboxing=any authenticated user), combined GET, and the
-full status lifecycle. Known bug not yet fixed: a rejected proof upload
-still leaves an orphaned file on disk. Not yet wired into this app.
+unboxing photo/video, server-timestamped, immutable). Fully implemented,
+**deployed live on Railway**
+(`https://happy-baby-returns-protection-production.up.railway.app`), and
+**wired into this app** (`src/lib/returns-api.ts`): case creation
+(`POST /api/return-cases`), status fetch (`GET /api/return-cases/:orderId`),
+and unboxing proof upload (`POST /api/proof`, role-separated — only
+"unboxing" is ever used from this app; "packing" proof is admin-only).
+Verified live end-to-end from this app today, including via Order History's
+return status display.
 
 ### 5. happy-baby-tryon-service
 
 Express + TypeScript. Thin provider-agnostic wrapper — no AI logic itself,
 routes to whichever provider `PROVIDER` selects (`huggingface` implemented,
 `self-hosted` stubbed). Verified end-to-end, pushed to GitHub, not
-deployed. **Not what this app currently calls** — this app still uses
+deployed. **Still not what this app calls** — this app still uses
 `happy-baby`'s own built-in `/api/try-on`. Migrating over to this service is
 still open work.
 
@@ -178,23 +267,22 @@ still open work.
 
 ## Immediate next steps
 
-1. **Test the mobile checkout flow end-to-end on a real device** — this
-   repo, HEAD commit, still outstanding. Most relevant next step for this
-   repo specifically.
-2. fit-engine: commit the CRUD + age-estimation work (currently
-   uncommitted). Decide whether/how `happy-baby`'s product catalog should
-   expose size charts for fit-engine to consume.
-3. returns-protection: fix the orphaned-file-on-rejected-upload bug.
-   Decide whether return-case status should auto-transition based on proof
-   completeness.
-4. Both fit-engine and returns-protection: the production `start` path
-   currently crashes — needs a fix before either is deployed.
-5. Deploy fit-engine, returns-protection, and tryon-service (all local-only
-   right now).
-6. Wire the three standalone services into `happy-baby` and this app as
-   real integrations — in particular, decide whether to migrate this app's
-   try-on screen off `happy-baby`'s `/api/try-on` and onto
-   `happy-baby-tryon-service`.
+1. Commit the two 2026-08-09 fixes in this repo (web checkout branch +
+   login redirect) — currently made and verified live but not yet
+   committed as of this writing.
+2. Consider whether to also verify the new web checkout path on a real
+   deployed web build (Vercel/similar), not just local dev, before calling
+   web checkout fully done.
+3. Decide whether/how to migrate this app's try-on screen off
+   `happy-baby`'s `/api/try-on` and onto `happy-baby-tryon-service` — still
+   the main outstanding cross-repo integration gap now that fit-engine and
+   returns-protection are both live and wired in.
+4. Deploy `happy-baby-tryon-service` (still local/GitHub-only) and wire it
+   into `happy-baby` and this app.
+5. Fix the known try-on garment misclassification bug (e.g. jeans rendered
+   as a shirt).
+6. Fix the known returns-protection bug: a rejected proof upload still
+   leaves an orphaned file on disk.
 7. Consider cleaning up the outer, near-empty `happy-baby-app\` template
    shell one directory up so the nested-repo trap doesn't cause confusion
    later (not touched yet — flagging only).

@@ -10,13 +10,56 @@ import { Spacing } from '@/constants/theme';
 import { useCart } from '@/context/cart-context';
 import { useWishlist } from '@/context/wishlist-context';
 import type { Product } from '@/lib/api';
+import { colorNameToHex, swatchNeedsBorder } from '@/lib/color-swatch';
 
 const ADDED_FEEDBACK_DURATION_MS = 1500;
+const MAX_SWATCH_DOTS = 4;
 
 type ProductCardProps = {
-  product: Product;
+  // `variantCount` is only present on entries from the grouped shop-grid
+  // listing (GET /api/products) -- optional so this card also works for a
+  // plain `Product` (related products, wishlist, cart thumbnails).
+  product: Product & { variantCount?: number };
   style?: StyleProp<ViewStyle>;
 };
+
+/**
+ * Small dot row hinting "this listing has N color options" on a grouped
+ * product's card. Only the representative variant's own color is known
+ * here (the rest live behind GET /api/products/group/:id, one fetch per
+ * card away) -- so only the first dot is colored from `variantColor`; the
+ * remainder are neutral placeholders, plus a "+N" label past the cap. Tap
+ * through to the product detail page to see and pick the real colors.
+ */
+function VariantSwatchDots({ product }: { product: ProductCardProps['product'] }) {
+  const count = product.variantCount ?? 1;
+  if (count <= 1) return null;
+
+  const dotCount = Math.min(count, MAX_SWATCH_DOTS);
+  const overflow = count - dotCount;
+  const firstDotColor = colorNameToHex(product.variantColor);
+
+  return (
+    <View style={styles.swatchRow} accessibilityLabel={`${count} colors available`}>
+      {Array.from({ length: dotCount }).map((_, index) => {
+        const color = index === 0 ? firstDotColor : DEFAULT_DOT_COLOR;
+        return (
+          <View
+            key={index}
+            style={[styles.swatchDot, { backgroundColor: color }, swatchNeedsBorder(color) && styles.swatchDotBorder]}
+          />
+        );
+      })}
+      {overflow > 0 && (
+        <ThemedText type="small" themeColor="textSecondary" style={styles.swatchOverflow}>
+          +{overflow}
+        </ThemedText>
+      )}
+    </View>
+  );
+}
+
+const DEFAULT_DOT_COLOR = '#d1d5db';
 
 export function ProductCard({ product, style }: ProductCardProps) {
   const router = useRouter();
@@ -70,6 +113,7 @@ export function ProductCard({ product, style }: ProductCardProps) {
         <ThemedText type="small" themeColor="textSecondary">
           {product.category} · ★ {product.rating}
         </ThemedText>
+        <VariantSwatchDots product={product} />
         <View style={styles.priceRow}>
           <ThemedText type="smallBold">₹{product.price}</ThemedText>
           {product.originalPrice && (
@@ -115,6 +159,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.one,
     flexWrap: 'wrap',
+  },
+  swatchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  swatchDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  swatchDotBorder: {
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.35)',
+  },
+  swatchOverflow: {
+    marginLeft: 2,
   },
   strikethrough: {
     textDecorationLine: 'line-through',
