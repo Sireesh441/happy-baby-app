@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "happy-baby-app",
+    "name": "Happy Shopping",
     "slug": "happy-baby-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -49,15 +49,15 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow HappyBaby to access your photos so you can try on clothing.",
-          "cameraPermission": "Allow HappyBaby to use your camera to take a photo for virtual try-on."
+          "photosPermission": "Allow Happy Shopping to access your photos so you can try on clothing.",
+          "cameraPermission": "Allow Happy Shopping to use your camera to take a photo for virtual try-on."
         }
       ],
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow HappyBaby to access your photos.",
-          "savePhotosPermission": "Allow HappyBaby to save your try-on results to your photo library."
+          "photosPermission": "Allow Happy Shopping to access your photos.",
+          "savePhotosPermission": "Allow Happy Shopping to save your try-on results to your photo library."
         }
       ]
     ],

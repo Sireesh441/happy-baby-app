@@ -78,7 +78,7 @@ export async function openRazorpayWebCheckout(options: {
       amount: options.amount,
       currency: options.currency,
       order_id: options.orderId,
-      name: 'Happy Baby',
+      name: 'Happy Shopping',
       description: 'Order payment',
       prefill: { name: options.name, email: options.email, contact: options.contact },
       theme: { color: '#3c87f7' },

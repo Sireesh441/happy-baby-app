@@ -93,7 +93,7 @@ export default function AccountScreen() {
             <MenuRow icon="people-outline" label="Family Members" onPress={goToFamilyMembers} />
             <MenuRow
               icon="chatbubble-ellipses-outline"
-              label="Ask Happy Baby"
+              label="Ask Happy Shopping"
               onPress={() => router.push('/assistant')}
             />
           </View>

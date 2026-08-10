@@ -68,6 +68,12 @@ export default function HomeScreen() {
     router.push({ pathname: '/shop/[vertical]', params: { vertical } });
   }
 
+  function goToProduct(id: Product['id']) {
+    setIsFocused(false);
+    Keyboard.dismiss();
+    router.push({ pathname: '/product/[id]', params: { id: String(id) } });
+  }
+
   function closeDropdown() {
     setIsFocused(false);
     Keyboard.dismiss();
@@ -78,7 +84,7 @@ export default function HomeScreen() {
       <View style={styles.content}>
         <View>
           <ThemedText type="title" style={styles.brand}>
-            HappyBaby
+            Happy Shopping
           </ThemedText>
           <ThemedText themeColor="textSecondary">Everything for your family, in one place.</ThemedText>
         </View>
@@ -132,7 +138,7 @@ export default function HomeScreen() {
                 suggestions.map((product) => (
                   <Pressable
                     key={product.id}
-                    onPress={() => goToVertical(product.vertical)}
+                    onPress={() => goToProduct(product.id)}
                     style={({ pressed }) => [styles.suggestionRow, pressed && styles.pressed]}>
                     <ProductThumbnail product={product} size={40} />
                     <View style={styles.suggestionText}>

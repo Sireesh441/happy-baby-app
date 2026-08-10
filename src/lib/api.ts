@@ -1,5 +1,6 @@
 export const BACKEND_URL = 'https://happy-baby-seven.vercel.app';
 const PRODUCTS_ENDPOINT = `${BACKEND_URL}/api/products`;
+const CATEGORIES_ENDPOINT = `${BACKEND_URL}/api/categories`;
 
 export type ProductVertical = 'kids' | 'men' | 'women';
 
@@ -15,6 +16,11 @@ export type Product = {
   reviewCount: number;
   tag?: string;
   category: string;
+  // Only meaningful when category is "Clothing" -- see CategoryMeta below
+  // and GET /api/categories for the vertical's allowed values. Undefined
+  // for every other category, and undefined for Clothing products that
+  // haven't been given one.
+  subcategory?: string;
   vertical: ProductVertical;
   emoji: string;
   color: string;
@@ -137,6 +143,28 @@ export async function fetchProductGroup(groupId: number): Promise<ProductGroupDe
   if (response.status === 404) return null;
   if (!response.ok) {
     throw new Error(`Failed to fetch product group (${response.status})`);
+  }
+
+  return response.json();
+}
+
+// One entry per category in a vertical, from GET /api/categories.
+// `subcategories` is only present on "Clothing" (the only category that
+// has them) -- its absence is how callers know a category isn't
+// expandable.
+export type CategoryMeta = {
+  name: string;
+  slug: string;
+  emoji: string;
+  subcategories?: string[];
+};
+
+/** The vertical's category list, in the backend's canonical order -- source of truth for CLOTHING_SUBCATEGORIES etc. lives in the happy-baby web repo, not duplicated here. */
+export async function fetchCategories(vertical: ProductVertical): Promise<CategoryMeta[]> {
+  const response = await fetch(`${CATEGORIES_ENDPOINT}?vertical=${vertical}`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch categories (${response.status})`);
   }
 
   return response.json();

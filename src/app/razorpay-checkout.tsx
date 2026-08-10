@@ -39,7 +39,7 @@ function buildCheckoutHtml(options: {
     amount: ${JSON.stringify(options.amount)},
     currency: ${JSON.stringify(options.currency)},
     order_id: ${JSON.stringify(options.orderId)},
-    name: "Happy Baby",
+    name: "Happy Shopping",
     description: "Order payment",
     prefill: {
       name: ${JSON.stringify(options.name)},

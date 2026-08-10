@@ -20,7 +20,7 @@ import { sendChatMessage, type ChatMessage } from '@/lib/assistant-api';
 
 const GREETING: ChatMessage = {
   role: 'assistant',
-  content: "Hi! I'm Ask Happy Baby 👶 Tell me what you're shopping for and I'll suggest a few products.",
+  content: "Hi! I'm Ask Happy Shopping 🛍️ Tell me what you're shopping for and I'll suggest a few products.",
 };
 
 export default function AssistantScreen() {
@@ -56,7 +56,7 @@ export default function AssistantScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <Stack.Screen options={{ title: 'Ask Happy Baby' }} />
+      <Stack.Screen options={{ title: 'Ask Happy Shopping' }} />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}

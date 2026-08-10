@@ -1,8 +1,8 @@
 @AGENTS.md
 
-# Happy Baby — Multi-Repo Project Context
+# Happy Shopping — Multi-Repo Project Context
 
-Happy Baby is a multi-vertical e-commerce platform (Kids/Men/Women, branded
+Happy Shopping is a multi-vertical e-commerce platform (Kids/Men/Women, branded
 "Happy Baby"/"Happy Men"/"Happy Women") with a web app and mobile app sharing
 one backend, plus three standalone microservices being built to eventually
 sell as independent B2B products. This same file is kept in sync across all
@@ -77,7 +77,7 @@ like Myntra/Ajio has this), (4) Proof-Locked Returns — targeting the two
 biggest validated complaint themes in Indian fashion e-commerce reviews
 (unfair return rejections, refund transparency). Long-term: package
 fit-engine, returns-protection, and tryon-service as standalone B2B SaaS for
-other e-commerce brands once proven inside Happy Baby.
+other e-commerce brands once proven inside Happy Shopping.
 
 ## Cross-repo integration facts
 
@@ -153,7 +153,7 @@ other e-commerce brands once proven inside Happy Baby.
 Next.js, deployed live on Vercel (`https://happy-baby-seven.vercel.app`).
 Postgres via Supabase + Prisma. NextAuth for web sessions, custom JWT
 endpoints (`/api/mobile-auth/login`, `/signup`, `/me`) for this app.
-Razorpay payments. Anthropic-powered "Ask Happy Baby" assistant. API routes:
+Razorpay payments. Anthropic-powered "Ask Happy Shopping" assistant. API routes:
 `addresses`, `assistant`, `auth/[...nextauth]`, `cart`, `cart/[productId]`,
 `mobile-auth/login`, `mobile-auth/me`, `mobile-auth/signup`, `orders`,
 `orders/[id]`, `products`, `products/[id]`, `razorpay/create-order`,

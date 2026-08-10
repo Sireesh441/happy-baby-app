@@ -8,14 +8,22 @@ import { ProductCardSkeleton } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { fetchProducts, type ProductListItem, type ProductVertical } from '@/lib/api';
+import { fetchCategories, fetchProducts, type ProductListItem, type ProductVertical } from '@/lib/api';
 
 const SKELETON_COUNT = 6;
 
+// The only category that expands in the rail -- must match the name
+// GET /api/categories returns for the Clothing entry in every vertical
+// (kids/men/women all use the literal category name "Clothing").
+const EXPANDABLE_CATEGORY = 'Clothing';
+
+// Matches the vertical brand names shown in the web app's Header component
+// (app/components/Header.tsx's BRAND map) so each vertical's shop screen
+// carries its own brand identity, parallel to Happy Men/Happy Women.
 const VERTICAL_LABELS: Record<ProductVertical, string> = {
-  kids: 'Kids',
-  men: 'Men',
-  women: 'Women',
+  kids: 'Happy Baby',
+  men: 'Happy Men',
+  women: 'Happy Women',
 };
 
 const ALL_CATEGORY = 'All';
@@ -42,6 +50,19 @@ export default function ShopScreen() {
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORY);
   const [retryKey, setRetryKey] = useState(0);
 
+  // Clothing's subcategory list for the current vertical, from
+  // GET /api/categories. Non-critical: if this fetch fails, Clothing just
+  // doesn't expand into anything -- the rest of the screen (including
+  // browsing Clothing as a whole) still works, so this has no loading/error
+  // UI of its own and isn't part of the isLoading/hasError gate above.
+  const [clothingSubcategories, setClothingSubcategories] = useState<string[]>([]);
+  // Which top-level rail category is currently expanded (only ever
+  // EXPANDABLE_CATEGORY in practice, since nothing else has subcategories).
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  // A tapped subcategory, refining selectedCategory (always "Clothing" when
+  // this is set) further. Cleared whenever a top-level category is tapped.
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
+
   // Fetched once per vertical; category taps below just filter this in memory
   // so switching categories never re-hits the network or reloads the screen.
   useEffect(() => {
@@ -54,6 +75,8 @@ export default function ShopScreen() {
     setIsLoading(true);
     setHasError(false);
     setSelectedCategory(ALL_CATEGORY);
+    setExpandedCategory(null);
+    setSelectedSubcategory(null);
 
     fetchProducts({ vertical })
       .then((results) => {
@@ -64,6 +87,16 @@ export default function ShopScreen() {
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
+      });
+
+    fetchCategories(vertical)
+      .then((results) => {
+        if (cancelled) return;
+        const clothing = results.find((c) => c.name === EXPANDABLE_CATEGORY);
+        setClothingSubcategories(clothing?.subcategories ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setClothingSubcategories([]);
       });
 
     return () => {
@@ -86,8 +119,35 @@ export default function ShopScreen() {
 
   const visibleProducts = useMemo(() => {
     if (selectedCategory === ALL_CATEGORY) return products;
+    if (selectedSubcategory) {
+      return products.filter(
+        (product) => product.category === selectedCategory && product.subcategory === selectedSubcategory
+      );
+    }
     return products.filter((product) => product.category === selectedCategory);
-  }, [products, selectedCategory]);
+  }, [products, selectedCategory, selectedSubcategory]);
+
+  // Tapping a top-level rail item. Clothing toggles its own expansion
+  // (tapping it again while expanded collapses it); every other category
+  // just selects normally and makes sure Clothing's list is collapsed, per
+  // "other top-level categories stay collapsed below."
+  function handleCategoryPress(name: string) {
+    setSelectedSubcategory(null);
+    setSelectedCategory(name);
+    if (name === EXPANDABLE_CATEGORY) {
+      setExpandedCategory((current) => (current === EXPANDABLE_CATEGORY ? null : EXPANDABLE_CATEGORY));
+    } else {
+      setExpandedCategory(null);
+    }
+  }
+
+  function handleSubcategoryPress(subcategory: string) {
+    setSelectedCategory(EXPANDABLE_CATEGORY);
+    setSelectedSubcategory(subcategory);
+    // Stays expanded -- picking a subcategory shouldn't collapse the list
+    // you're actively choosing from.
+    setExpandedCategory(EXPANDABLE_CATEGORY);
+  }
 
   return (
     <ThemedView style={styles.container}>
@@ -109,19 +169,36 @@ export default function ShopScreen() {
         <View style={styles.body}>
           <ThemedView type="backgroundElement" style={styles.rail}>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.railContent}>
-              {categories.map((category) => (
-                <CategoryRailItem
-                  key={category.name}
-                  category={category}
-                  isSelected={category.name === selectedCategory}
-                  onPress={() => setSelectedCategory(category.name)}
-                />
-              ))}
+              {categories.map((category) => {
+                const isExpandable = category.name === EXPANDABLE_CATEGORY && clothingSubcategories.length > 0;
+                const isExpanded = isExpandable && expandedCategory === EXPANDABLE_CATEGORY;
+                return (
+                  <View key={category.name} style={styles.railItemGroup}>
+                    <CategoryRailItem
+                      category={category}
+                      isSelected={category.name === selectedCategory}
+                      onPress={() => handleCategoryPress(category.name)}
+                    />
+                    {isExpanded && (
+                      <View style={styles.subcategoryList}>
+                        {clothingSubcategories.map((subcategory) => (
+                          <SubcategoryRailItem
+                            key={subcategory}
+                            label={subcategory}
+                            isSelected={selectedSubcategory === subcategory}
+                            onPress={() => handleSubcategoryPress(subcategory)}
+                          />
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
             </ScrollView>
           </ThemedView>
 
           <FlatList
-            key={selectedCategory}
+            key={`${selectedCategory}:${selectedSubcategory ?? ''}`}
             style={styles.grid}
             data={visibleProducts}
             keyExtractor={(item) => String(item.id)}
@@ -170,6 +247,36 @@ function CategoryRailItem({
   );
 }
 
+// A single subcategory row, stacked beneath Clothing once it's expanded.
+// Deliberately plainer than CategoryRailItem (no icon tile, no bold pill) so
+// the rail visually reads as "Clothing, then its subcategories indented
+// under it" rather than a second row of equally-weighted top-level items.
+function SubcategoryRailItem({
+  label,
+  isSelected,
+  onPress,
+}: {
+  label: string;
+  isSelected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.subcategoryItem, pressed && styles.subcategoryItemPressed]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}>
+      <ThemedText
+        type={isSelected ? 'smallBold' : 'small'}
+        themeColor={isSelected ? 'text' : 'textSecondary'}
+        numberOfLines={2}
+        style={styles.railLabel}>
+        {label}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -202,10 +309,26 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     alignItems: 'center',
   },
+  railItemGroup: {
+    alignItems: 'center',
+    width: '100%',
+  },
   railItemWrapper: {
     alignItems: 'center',
     gap: Spacing.one,
     paddingHorizontal: Spacing.one,
+  },
+  subcategoryList: {
+    marginTop: Spacing.two,
+    gap: Spacing.two,
+    alignItems: 'center',
+  },
+  subcategoryItem: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.one,
+  },
+  subcategoryItemPressed: {
+    opacity: 0.6,
   },
   railIconTile: {
     width: 44,
