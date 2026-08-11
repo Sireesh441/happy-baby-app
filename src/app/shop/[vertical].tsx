@@ -270,7 +270,7 @@ function SubcategoryRailItem({
         type={isSelected ? 'smallBold' : 'small'}
         themeColor={isSelected ? 'text' : 'textSecondary'}
         numberOfLines={2}
-        style={styles.railLabel}>
+        style={[styles.railLabel, styles.subcategoryLabel]}>
         {label}
       </ThemedText>
     </Pressable>
@@ -321,7 +321,10 @@ const styles = StyleSheet.create({
   subcategoryList: {
     marginTop: Spacing.two,
     gap: Spacing.two,
-    alignItems: 'center',
+    // Right-aligned (not centered) so the list reads as tucked under
+    // Clothing's right edge rather than floating in the middle of the
+    // narrow rail -- easier to scan when labels wrap to two lines.
+    alignItems: 'flex-end',
   },
   subcategoryItem: {
     paddingVertical: Spacing.one,
@@ -329,6 +332,9 @@ const styles = StyleSheet.create({
   },
   subcategoryItemPressed: {
     opacity: 0.6,
+  },
+  subcategoryLabel: {
+    textAlign: 'right',
   },
   railIconTile: {
     width: 44,

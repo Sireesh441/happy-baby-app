@@ -4,6 +4,12 @@ const CATEGORIES_ENDPOINT = `${BACKEND_URL}/api/categories`;
 
 export type ProductVertical = 'kids' | 'men' | 'women';
 
+// Which part of the body a Clothing product covers -- e.g. used to filter
+// the outfit try-on pickers to genuine tops/bottoms. Undefined for
+// products that don't have one set (most non-Clothing categories, and any
+// Clothing product predating this field).
+export type GarmentRegion = 'upper_body' | 'lower_body' | 'dresses';
+
 export type SizeEntry = { size: string; quantity: number; available: boolean };
 
 export type Product = {
@@ -26,6 +32,7 @@ export type Product = {
   color: string;
   image?: string;
   stock: number;
+  garmentRegion?: GarmentRegion;
   // Only populated for products created/updated via the Excel catalog
   // import on the backend -- manually added products won't have these.
   sizes?: SizeEntry[];
