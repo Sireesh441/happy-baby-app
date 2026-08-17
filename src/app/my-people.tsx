@@ -4,6 +4,7 @@ import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -23,14 +24,16 @@ import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useTheme } from '@/hooks/use-theme';
 import {
-  createFamilyProfile,
-  deleteFamilyProfile,
-  fetchFamilyProfiles,
-  updateFamilyProfile,
-  type FamilyProfile,
+  createPersonProfile,
+  deletePersonProfile,
+  fetchPersonProfiles,
+  updatePersonProfile,
+  uploadPersonPhoto,
+  type PersonProfile,
 } from '@/lib/fit-engine-api';
+import { pickImage } from '@/lib/pick-image';
 
-const RELATION_SUGGESTIONS = ['Self', 'Spouse', 'Child', 'Parent'];
+const RELATION_SUGGESTIONS = ['Self', 'Spouse', 'Child', 'Parent', 'Sibling', 'Friend', 'Relative', 'Other'];
 const SKELETON_CARD_COUNT = 3;
 const DOB_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -44,7 +47,7 @@ function computeAgeFromDob(dob: Date): number {
   return age;
 }
 
-function summarize(profile: FamilyProfile): string {
+function summarize(profile: PersonProfile): string {
   const parts: string[] = [];
   if (profile.age != null) parts.push(`${profile.age} yrs`);
   if (profile.heightCm != null) parts.push(`${profile.heightCm} cm`);
@@ -52,24 +55,25 @@ function summarize(profile: FamilyProfile): string {
   return parts.length > 0 ? parts.join(' · ') : 'No measurements yet';
 }
 
-export default function FamilyMembersScreen() {
+export default function MyPeopleScreen() {
   const router = useRouter();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { user, token, isLoading: isAuthLoading } = useAuth();
 
-  const [profiles, setProfiles] = useState<FamilyProfile[]>([]);
+  const [profiles, setProfiles] = useState<PersonProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
 
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [editingProfile, setEditingProfile] = useState<FamilyProfile | null>(null);
+  const [editingProfile, setEditingProfile] = useState<PersonProfile | null>(null);
+  const [uploadingPhotoForId, setUploadingPhotoForId] = useState<number | null>(null);
 
   useEffect(() => {
     if (isAuthLoading) return;
     if (!user || !token) {
-      router.replace({ pathname: '/login', params: { redirectTo: '/family-members' } });
+      router.replace({ pathname: '/login', params: { redirectTo: '/my-people' } });
       return;
     }
 
@@ -77,7 +81,7 @@ export default function FamilyMembersScreen() {
     setIsLoading(true);
     setHasError(false);
 
-    fetchFamilyProfiles(token)
+    fetchPersonProfiles(token)
       .then((result) => {
         if (!cancelled) setProfiles(result);
       })
@@ -98,12 +102,12 @@ export default function FamilyMembersScreen() {
     setIsModalVisible(true);
   }
 
-  function openEditModal(profile: FamilyProfile) {
+  function openEditModal(profile: PersonProfile) {
     setEditingProfile(profile);
     setIsModalVisible(true);
   }
 
-  function handleSaved(saved: FamilyProfile) {
+  function handleSaved(saved: PersonProfile) {
     setProfiles((current) => {
       const exists = current.some((profile) => profile.id === saved.id);
       return exists ? current.map((profile) => (profile.id === saved.id ? saved : profile)) : [saved, ...current];
@@ -111,16 +115,16 @@ export default function FamilyMembersScreen() {
     setIsModalVisible(false);
   }
 
-  function handleDelete(profile: FamilyProfile) {
+  function handleDelete(profile: PersonProfile) {
     if (!token) return;
-    Alert.alert('Remove family member?', `This will delete ${profile.name}'s profile.`, [
+    Alert.alert('Remove this person?', `This will delete ${profile.name}'s profile.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
         style: 'destructive',
         onPress: async () => {
           try {
-            await deleteFamilyProfile(token, profile.id);
+            await deletePersonProfile(token, profile.id);
             setProfiles((current) => current.filter((item) => item.id !== profile.id));
           } catch (error) {
             Alert.alert('Could not remove', error instanceof Error ? error.message : 'Please try again.');
@@ -130,10 +134,26 @@ export default function FamilyMembersScreen() {
     ]);
   }
 
+  async function handleAddOrUpdatePhoto(profile: PersonProfile) {
+    if (!token) return;
+    const asset = await pickImage();
+    if (!asset) return;
+
+    setUploadingPhotoForId(profile.id);
+    try {
+      const updated = await uploadPersonPhoto(token, profile.id, asset);
+      setProfiles((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (error) {
+      Alert.alert('Could not save photo', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setUploadingPhotoForId(null);
+    }
+  }
+
   if (isAuthLoading) {
     return (
       <ThemedView style={styles.statusContainer}>
-        <Stack.Screen options={{ title: 'Family Members' }} />
+        <Stack.Screen options={{ title: 'My People' }} />
         <ActivityIndicator color={theme.textSecondary} />
       </ThemedView>
     );
@@ -142,7 +162,7 @@ export default function FamilyMembersScreen() {
   if (isLoading && profiles.length === 0) {
     return (
       <ThemedView style={styles.container}>
-        <Stack.Screen options={{ title: 'Family Members' }} />
+        <Stack.Screen options={{ title: 'My People' }} />
         <View style={styles.listContent}>
           {Array.from({ length: SKELETON_CARD_COUNT }).map((_, index) => (
             <View key={index} style={styles.card}>
@@ -157,25 +177,41 @@ export default function FamilyMembersScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <Stack.Screen options={{ title: 'Family Members' }} />
+      <Stack.Screen options={{ title: 'My People' }} />
 
       {hasError ? (
-        <ErrorState message="Couldn't load family members. Check your connection." onRetry={() => setRetryKey((k) => k + 1)} />
+        <ErrorState message="Couldn't load My People. Check your connection." onRetry={() => setRetryKey((k) => k + 1)} />
       ) : profiles.length === 0 ? (
         <EmptyState
           emoji="👨‍👩‍👧"
-          title="No family members yet"
-          message="Add profiles for the people you shop for to get personalized fit recommendations."
-          actionLabel="Add Family Member"
+          title="No people yet"
+          message="Add profiles for the people you shop for to get personalized fit recommendations and try-on."
+          actionLabel="Add Person"
           onAction={openAddModal}
         />
       ) : (
         <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
           {profiles.map((profile) => (
-            // Two sibling Pressables, not nested -- Pressable renders as a
-            // <button> on web, and a <button> inside a <button> is invalid
-            // HTML that breaks click handling for both.
             <ThemedView key={profile.id} type="backgroundElement" style={styles.card}>
+              <Pressable
+                onPress={() => handleAddOrUpdatePhoto(profile)}
+                disabled={uploadingPhotoForId === profile.id}
+                accessibilityRole="button"
+                accessibilityLabel={profile.photoUrl ? `Update ${profile.name}'s photo` : `Add ${profile.name}'s photo`}
+                style={styles.photoTapTarget}>
+                {uploadingPhotoForId === profile.id ? (
+                  <ActivityIndicator color={theme.textSecondary} />
+                ) : profile.photoUrl ? (
+                  <Image source={{ uri: profile.photoUrl }} style={styles.avatarImage} resizeMode="cover" />
+                ) : (
+                  <ThemedView type="backgroundSelected" style={styles.avatarPlaceholder}>
+                    <Ionicons name="camera-outline" size={18} color={theme.textSecondary} />
+                  </ThemedView>
+                )}
+              </Pressable>
+              {/* Two sibling Pressables, not nested -- Pressable renders as a
+                  <button> on web, and a <button> inside a <button> is invalid
+                  HTML that breaks click handling for both. */}
               <Pressable
                 onPress={() => openEditModal(profile)}
                 style={styles.cardText}
@@ -203,12 +239,12 @@ export default function FamilyMembersScreen() {
           onPress={openAddModal}
           style={[styles.fab, { bottom: Math.max(insets.bottom, Spacing.four) }]}
           accessibilityRole="button"
-          accessibilityLabel="Add family member">
+          accessibilityLabel="Add person">
           <Ionicons name="add" size={26} color="#ffffff" />
         </Pressable>
       )}
 
-      <FamilyMemberModal
+      <PersonModal
         visible={isModalVisible}
         token={token}
         profile={editingProfile}
@@ -219,7 +255,7 @@ export default function FamilyMembersScreen() {
   );
 }
 
-function FamilyMemberModal({
+function PersonModal({
   visible,
   token,
   profile,
@@ -228,9 +264,9 @@ function FamilyMemberModal({
 }: {
   visible: boolean;
   token: string | null;
-  profile: FamilyProfile | null;
+  profile: PersonProfile | null;
   onClose: () => void;
-  onSaved: (profile: FamilyProfile) => void;
+  onSaved: (profile: PersonProfile) => void;
 }) {
   const theme = useTheme();
   const isEditing = profile != null;
@@ -258,6 +294,12 @@ function FamilyMemberModal({
     setWeightText(profile?.weightKg != null ? String(profile.weightKg) : '');
     setFormError(null);
   }, [visible, profile]);
+
+  function handleRelationChip(option: string) {
+    // "Other" has no fixed value of its own -- clear the field so the user
+    // types their own relation, instead of literally saving "Other".
+    setRelation(option === 'Other' ? '' : option);
+  }
 
   async function handleSave() {
     if (!token) return;
@@ -318,8 +360,8 @@ function FamilyMemberModal({
     try {
       const input = { name: name.trim(), relation: relation.trim(), age, dateOfBirth, heightCm, weightKg };
       const saved = isEditing
-        ? await updateFamilyProfile(token, profile.id, input)
-        : await createFamilyProfile(token, input);
+        ? await updatePersonProfile(token, profile.id, input)
+        : await createPersonProfile(token, input);
       onSaved(saved);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
@@ -334,7 +376,7 @@ function FamilyMemberModal({
         <ThemedView style={styles.modalSheet}>
           <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
             <View style={styles.modalHeader}>
-              <ThemedText type="smallBold">{isEditing ? 'Edit Family Member' : 'Add Family Member'}</ThemedText>
+              <ThemedText type="smallBold">{isEditing ? 'Edit Person' : 'Add Person'}</ThemedText>
               <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
                 <Ionicons name="close" size={22} color={theme.textSecondary} />
               </Pressable>
@@ -345,10 +387,10 @@ function FamilyMemberModal({
             </FormField>
 
             <FormField label="Relation">
-              <FormInput value={relation} onChangeText={setRelation} placeholder="e.g. Child" />
+              <FormInput value={relation} onChangeText={setRelation} placeholder="e.g. Child, or your own" />
               <View style={styles.chipRow}>
                 {RELATION_SUGGESTIONS.map((option) => (
-                  <Pressable key={option} onPress={() => setRelation(option)} style={styles.chip}>
+                  <Pressable key={option} onPress={() => handleRelationChip(option)} style={styles.chip}>
                     <ThemedText type="small">{option}</ThemedText>
                   </Pressable>
                 ))}
@@ -387,7 +429,7 @@ function FamilyMemberModal({
                 <ActivityIndicator color="#ffffff" />
               ) : (
                 <ThemedText type="smallBold" style={styles.saveButtonText}>
-                  {isEditing ? 'Save Changes' : 'Add Family Member'}
+                  {isEditing ? 'Save Changes' : 'Add Person'}
                 </ThemedText>
               )}
             </Pressable>
@@ -455,6 +497,26 @@ const styles = StyleSheet.create({
   cardText: {
     flex: 1,
     gap: 2,
+  },
+  photoTapTarget: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  avatarPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fab: {
     position: 'absolute',

@@ -23,11 +23,11 @@ export default function AccountScreen() {
     }
   }
 
-  function goToFamilyMembers() {
+  function goToMyPeople() {
     if (user) {
-      router.push('/family-members');
+      router.push('/my-people');
     } else {
-      router.push({ pathname: '/login', params: { redirectTo: '/family-members' } });
+      router.push({ pathname: '/login', params: { redirectTo: '/my-people' } });
     }
   }
 
@@ -90,7 +90,7 @@ export default function AccountScreen() {
           <View style={styles.menu}>
             <MenuRow icon="receipt-outline" label="Order History" onPress={goToOrderHistory} />
             <MenuRow icon="heart-outline" label="Wishlist" onPress={() => router.push('/wishlist')} />
-            <MenuRow icon="people-outline" label="Family Members" onPress={goToFamilyMembers} />
+            <MenuRow icon="people-outline" label="My People" onPress={goToMyPeople} />
             <MenuRow
               icon="chatbubble-ellipses-outline"
               label="Ask Happy Shopping"

@@ -33,7 +33,7 @@ export default function RootLayout() {
               <Stack.Screen name="try-on/[id]" options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
               <Stack.Screen name="order-history" options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
               <Stack.Screen name="wishlist" options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
-              <Stack.Screen name="family-members" options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
+              <Stack.Screen name="my-people" options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
               <Stack.Screen name="assistant" options={{ headerShown: true, headerBackButtonDisplayMode: 'minimal' }} />
             </Stack>
           </WishlistProvider>

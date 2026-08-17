@@ -8,7 +8,7 @@ import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useTheme } from '@/hooks/use-theme';
 import type { ProductVertical } from '@/lib/api';
-import { fetchFamilyProfiles, fetchFitScore, type FamilyProfile, type FitScoreResult } from '@/lib/fit-engine-api';
+import { fetchPersonProfiles, fetchFitScore, type PersonProfile, type FitScoreResult } from '@/lib/fit-engine-api';
 
 type FitConfidenceProps = {
   vertical: ProductVertical;
@@ -22,7 +22,7 @@ export function FitConfidence({ vertical }: FitConfidenceProps) {
   const theme = useTheme();
   const { user, token } = useAuth();
 
-  const [profiles, setProfiles] = useState<FamilyProfile[]>([]);
+  const [profiles, setProfiles] = useState<PersonProfile[]>([]);
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
   const [profilesError, setProfilesError] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -36,7 +36,7 @@ export function FitConfidence({ vertical }: FitConfidenceProps) {
     setIsLoadingProfiles(true);
     setProfilesError(false);
 
-    fetchFamilyProfiles(token)
+    fetchPersonProfiles(token)
       .then((fetched) => {
         if (cancelled) return;
         setProfiles(fetched);
@@ -64,7 +64,7 @@ export function FitConfidence({ vertical }: FitConfidenceProps) {
     setIsLoadingScore(true);
     setScoreError(false);
 
-    fetchFitScore(token, { familyProfileId: selectedId, sizeChart: getSizeChartForVertical(vertical) })
+    fetchFitScore(token, { personProfileId: selectedId, sizeChart: getSizeChartForVertical(vertical) })
       .then((score) => {
         if (!cancelled) setResult(score);
       })
@@ -113,11 +113,11 @@ export function FitConfidence({ vertical }: FitConfidenceProps) {
       <View style={styles.container}>
         <ThemedText type="smallBold">Fit Confidence</ThemedText>
         <Pressable
-          onPress={() => router.push('/family-members')}
+          onPress={() => router.push('/my-people')}
           accessibilityRole="button"
-          accessibilityLabel="Add a family member">
+          accessibilityLabel="Add a person to My People">
           <ThemedText type="small" themeColor="textSecondary" style={styles.promptText}>
-            Add a family member to get a personalized size recommendation.
+            Add someone to My People to get a personalized size recommendation.
           </ThemedText>
         </Pressable>
       </View>

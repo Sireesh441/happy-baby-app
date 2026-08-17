@@ -1,7 +1,26 @@
+import { File as ExpoFile, Paths } from 'expo-file-system';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import { Platform } from 'react-native';
 
 import { BACKEND_URL } from '@/lib/api';
+
+/**
+ * Turns a saved person-photo's remote Cloudinary URL into something
+ * requestTryOn/requestOutfitTryOn can upload, matching the same {file} (web)
+ * / {uri} (native) shapes expo-image-picker's own assets already use.
+ */
+export async function resolveSavedPhotoAsset(url: string): Promise<ImagePickerAsset> {
+  if (Platform.OS === 'web') {
+    const blob = await (await fetch(url)).blob();
+    const file = new File([blob], 'saved-photo.jpg', { type: blob.type || 'image/jpeg' });
+    return { uri: url, file, mimeType: file.type } as unknown as ImagePickerAsset;
+  }
+  // Native fetch/FormData needs a local file:// URI, not a remote URL --
+  // download it into cache first, the same approach save-image.ts already
+  // uses for the opposite direction (saving a result back to the gallery).
+  const downloaded = await ExpoFile.downloadFileAsync(url, Paths.cache);
+  return { uri: downloaded.uri, mimeType: 'image/jpeg' } as unknown as ImagePickerAsset;
+}
 
 function appendPhoto(formData: FormData, photo: ImagePickerAsset) {
   if (Platform.OS === 'web' && photo.file) {
