@@ -62,8 +62,8 @@ export function ProductImageCarousel({ images, emoji, color, height = 320 }: Pro
           <Image
             key={`${uri}-${index}`}
             source={{ uri }}
-            style={{ width: containerWidth, height }}
-            resizeMode="cover"
+            style={{ width: containerWidth, height, backgroundColor: tileColor }}
+            resizeMode="contain"
           />
         ))}
       </ScrollView>

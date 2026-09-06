@@ -1,6 +1,6 @@
-import { StyleSheet, Text, View, type ViewProps } from 'react-native';
+import { Image, StyleSheet, Text, View, type ViewProps } from 'react-native';
 
-import type { Product } from '@/lib/api';
+import { getProductImageUrl, type Product } from '@/lib/api';
 
 // The backend describes each product's tile color as a Tailwind class name;
 // map the ones it actually sends to hex since Tailwind classes don't apply here.
@@ -22,11 +22,13 @@ export function getTileColor(color: string): string {
 }
 
 type ProductThumbnailProps = ViewProps & {
-  product: Pick<Product, 'emoji' | 'color'>;
+  product: Pick<Product, 'emoji' | 'color' | 'image'>;
   size?: number;
 };
 
 export function ProductThumbnail({ product, size = 48, style, ...rest }: ProductThumbnailProps) {
+  const imageUrl = getProductImageUrl(product);
+
   return (
     <View
       style={[
@@ -36,11 +38,16 @@ export function ProductThumbnail({ product, size = 48, style, ...rest }: Product
           height: size,
           borderRadius: size / 4,
           backgroundColor: getTileColor(product.color),
+          overflow: 'hidden',
         },
         style,
       ]}
       {...rest}>
-      <Text style={{ fontSize: size * 0.5 }}>{product.emoji}</Text>
+      {imageUrl ? (
+        <Image source={{ uri: imageUrl }} style={{ width: size, height: size }} resizeMode="cover" />
+      ) : (
+        <Text style={{ fontSize: size * 0.5 }}>{product.emoji}</Text>
+      )}
     </View>
   );
 }
