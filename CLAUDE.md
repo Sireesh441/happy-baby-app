@@ -7,7 +7,7 @@ Happy Shopping is a multi-vertical e-commerce platform (Kids/Men/Women, branded
 one backend, plus three standalone microservices being built to eventually
 sell as independent B2B products. This same file is kept in sync across all
 five repos so any session has the full picture regardless of which repo it
-starts in. Last updated 2026-09-06 (all five repos re-synced this pass).
+starts in. Last updated 2026-09-17 (all five repos re-synced this pass -- tryon-service's smart PROVIDER default + Leffa work).
 
 **You are here:** `happy-baby-app` (the real, inner copy — see the trap
 warning right below) — the Expo React Native app, which also builds and runs
@@ -85,7 +85,7 @@ scaffold itself was abandoned.
 | 2 | `happy-baby-app` (inner copy) | Expo app (SDK 54) — native (iOS/Android) + web | Feature-complete matching happy-baby's backend (swatches, bulk-buying, subcategory rail, outfit try-on, WhatsApp share); image-rendering bugs fixed 2026-09-06 |
 | 3 | `happy-baby-fit-engine` | Standalone Express/TS API — Person Fit Profiles + Fit Confidence Score | 🚨 Railway URL unreachable as of 2026-09-06 (see banner above). Renamed `FamilyProfile`→`PersonProfile`, added photo upload |
 | 4 | `happy-baby-returns-protection` | Standalone Express/TS API — tamper-evident return proof | 🚨 Railway URL unreachable as of 2026-09-06 (see banner above). Otherwise feature-complete per last verification |
-| 5 | `happy-baby-tryon-service` | Standalone Express/TS API — provider-agnostic try-on wrapper | 🚨 Railway URL unreachable as of 2026-09-06 (see banner above). Self-hosted CatVTON provider now implemented (outfit mode + NSFW detection); still no JWT auth |
+| 5 | `happy-baby-tryon-service` | Standalone Express/TS API — provider-agnostic try-on wrapper | 🚨 Railway URL unreachable as of 2026-09-06 (see banner above). `PROVIDER` now smart-defaults to self-hosted when configured; Leffa-based replacement server built but not deployed; still no JWT auth |
 
 ## Key product strategy — "Fit Certain"
 
@@ -309,12 +309,22 @@ this integration is presumed broken until that's resolved.
 
 ### 5. happy-baby-tryon-service
 
+**Update, 2026-09-17:** `PROVIDER`'s default is no longer a fixed
+`huggingface` string — it now resolves to `self-hosted` automatically
+when `SELF_HOSTED_ENDPOINT_URL` is set, so this app's outfit try-on mode
+no longer depends on someone having remembered to set `PROVIDER`
+explicitly on Railway (just on `SELF_HOSTED_ENDPOINT_URL` pointing at a
+real, reachable server, which the outage below still blocks confirming).
+`HuggingFaceProvider` also gained a second selectable Space,
+`franciszzj/Leffa` (generally higher quality, not live-verified). A
+Leffa-based replacement for the RunPod CatVTON server now exists at
+`leffa-tryon-server/` inside the tryon-service repo — not deployed yet.
+
 Express + TypeScript. Thin provider-agnostic wrapper — no AI logic itself,
 routes to whichever provider `PROVIDER` selects. `self-hosted` is **no
 longer a stub** — it now calls a real RunPod-hosted CatVTON server, with
 outfit mode and NSFW-placeholder detection (SHA-256 hash match against a
-known static placeholder image). Default `PROVIDER` is still `huggingface`,
-which explicitly rejects outfit requests. Package identity renamed to
+known static placeholder image). Package identity renamed to
 `happy-shopping`. Still no JWT auth on `POST /api/try-on`. This app reaches
 it transitively via `happy-baby`'s `/api/try-on` proxy, not directly. 🚨
 **Its Railway URL returned "Application not found" when hit directly on
@@ -329,9 +339,12 @@ it transitively via `happy-baby`'s `/api/try-on` proxy, not directly. 🚨
    current URLs, then update this app's hardcoded `FIT_ENGINE_URL`/
    `RETURNS_SERVICE_URL` constants (and `happy-baby`'s corresponding env
    vars) to match. Biggest blocker across the whole platform right now.
-2. **Confirm `PROVIDER=self-hosted` is actually set on tryon-service** once
-   it's reachable again — otherwise this app's full-outfit try-on mode
-   fails outright against the default `huggingface` provider.
+2. **Confirm `SELF_HOSTED_ENDPOINT_URL` is actually set (and reachable) on
+   tryon-service** once it's back up — `PROVIDER` now defaults to
+   `self-hosted` automatically whenever that's set (as of 2026-09-17), so
+   the remaining risk for this app's full-outfit try-on mode is the
+   endpoint URL being missing/stale/unreachable, not the provider choice
+   itself.
 3. Confirm whether this app's `family-members` screen/copy needs updating
    to match fit-engine's `FamilyProfile`→`PersonProfile` rename.
 4. Add JWT auth to `happy-baby-tryon-service`'s `POST /api/try-on` — still
